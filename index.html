@@ -687,16 +687,29 @@ function startKick() {
   const look = lookDir(), speed = Math.max(55, Math.hypot(P.vx, P.vy, P.vz) * 1.15);
   dropChain(false); P.kick = { t: .38, d: look, speed }; P.airJumps = 1; P.yaw = cam.yaw; style('kick', 16); sfx(.5, 1200, .3);
 }
+const ORBIT_REACH = 16;                    // how close to a wall you must be to hook it
+// is there still a decent chunk of floor at this height? (rubble and gutted floors do not count)
+function floorStands(b, y) {
+  const j = Math.floor(y / V);
+  if (j < 0 || j >= b.ny) return false;
+  if (!b.vox) return true;
+  let n = 0;
+  for (let i = 0; i < b.nx; i++) for (let k = 0; k < b.nz; k++) if (b.vox[i + b.nx * (j + b.ny * k)] === 1) n++;
+  return n >= b.nx * b.nz * .25;
+}
 function startOrbit() {
-  let best = null, bd = 45;
+  let best = null, bd = ORBIT_REACH, height = 0;
   for (const b of buildings) {
-    const d = Math.hypot(b.x + b.nx * V / 2 - P.x, b.z + b.nz * V / 2 - P.z);
-    if (d < bd && b.ny * V > P.y + 2) { best = b; bd = d; }
+    // distance to the building's walls, not to its centre
+    const d = Math.hypot(P.x - clamp(P.x, b.x, b.x + b.nx * V), P.z - clamp(P.z, b.z, b.z + b.nz * V));
+    if (d >= bd || P.y > b.ny * V + 4) continue;
+    const y = clamp(P.y, 7, b.ny * V - 4);
+    if (floorStands(b, y)) { best = b; bd = d; height = y; }
   }
   if (!best) return say('NO TOWER IN REACH', .8);
   const cx = best.x + best.nx * V / 2, cz = best.z + best.nz * V / 2;
   dropChain(false);
-  P.orbit = { cx, cz, r: Math.max(best.nx, best.nz) * V * .72 + 2, a: Math.atan2(P.x - cx, P.z - cz), y: clamp(P.y, 7, best.ny * V - 4), cd: 0, p: [cx, P.y, cz] };
+  P.orbit = { b: best, cx, cz, r: Math.max(best.nx, best.nz) * V * .72 + 2, a: Math.atan2(P.x - cx, P.z - cz), y: height, cd: 0, p: [cx, height, cz] };
   P.wall = null; style('orbit', 16); sfx(.3, 1400, .2);
 }
 function tripwire() {
@@ -756,6 +769,14 @@ function topple() {
   if (cut < 0) return say('TOO STURDY: CUT INTO ITS BASE', 1.4);
   const dx = P.x - (b.x + nx * V / 2), dz = P.z - (b.z + nz * V / 2);
   const alongX = Math.abs(dx) > Math.abs(dz), sign = Math.sign(alongX ? dx : dz) || 1;
+  dropTower(b, cut, alongX, sign, false);
+  if (pvp) netSend({ t: 'topple', i: buildings.indexOf(b), cut, alongX, sign });
+  dropChain(false); P.punch = .3; P.yaw = cam.yaw; act('yank', .7); style('topple', 22); jolt(.8, .06); sfx(1, 300, 1.2);
+}
+// everything above floor "cut" becomes one rigid falling piece. show = someone else toppled it
+function dropTower(b, cut, alongX, sign, show) {
+  const { nx, ny, nz } = b, layer = nx * ny;
+  const vox = b.vox = b.vox || new Uint8Array(nx * ny * nz).fill(1);
   const parts = [];
   const solid = (i, j, k) => i >= 0 && i < nx && k >= 0 && k < nz && j >= cut && j < ny && vox[i + nx * j + layer * k] > 0;
   for (let k = 0; k < nz; k++) for (let j = cut; j < ny; j++) for (let i = 0; i < nx; i++) {
@@ -765,13 +786,11 @@ function topple() {
       mat: 10 + ((i === 0) | (i === nx-1) << 1 | (j === ny-1) << 3 | (k === 0) << 4 | (k === nz-1) << 5) });
   }
   for (let k = 0; k < nz; k++) for (let j = cut; j < ny; j++) for (let i = 0; i < nx; i++) vox[i + nx * j + layer * k] = 0;
-  if (pvp) netSend({ t: 'clear', i: buildings.indexOf(b), cut });
   b.falling = b.falling.filter(id => vox[id]);
   b.dirty = cityDirty = true;
-  // hinge along the bottom edge nearest the player
+  // hinge along the bottom edge on the side it falls toward
   const hinge = alongX ? (sign > 0 ? b.x + nx * V : b.x) : (sign > 0 ? b.z + nz * V : b.z);
-  fallers.push({ parts, color: b.color, alongX, sign, hinge, y: cut * V, a: .03, w: .12, check: 0, own: b });
-  dropChain(false); P.punch = .3; P.yaw = cam.yaw; act('yank', .7); style('topple', 22); jolt(.8, .06); sfx(1, 300, 1.2);
+  fallers.push({ parts, color: b.color, alongX, sign, hinge, y: cut * V, a: .03, w: .12, check: 0, own: b, show, crushed: show });
 }
 function fallerPoint(f, q) {          // where a block of a tipping tower is now
   const u = ((f.alongX ? q.x : q.z) - f.hinge) * f.sign, h = q.y - f.y;
@@ -807,7 +826,7 @@ function stepFallers(dt) {
         const p = fallerPoint(f, f.parts[i]);
         if (p[1] < 1.5 && f.a > 1) landed = true;
         const other = smashes < 4 && p[1] > 1 && buildingAt(p);
-        if (other && other !== f.own && carve(...p, 4, 14)) smashes++;
+        if (!f.show && other && other !== f.own && carve(...p, 4, 14)) smashes++;
       }
     }
     if (!landed) continue;
@@ -923,7 +942,7 @@ function specialMove(dt, wx, wz, crouchKey) {
       const r = raycast([P.x, P.y + 1.2, P.z], u, l);
       if (r) { o.p = r.p; if (carve(r.p[0] + u[0], r.p[1], r.p[2] + u[2], 2.8, -12)) { cam.shake = Math.max(cam.shake, .3); sfx(.4, 1300, .1); } }
     }
-    if (!keys.has('KeyX')) { P.orbit = null; P.vy += 12; P.airJumps = 1; P.dashes = ROSTER[who].dashes || 2; }
+    if (!keys.has('KeyX') || !floorStands(o.b, o.y)) { P.orbit = null; P.vy += 12; P.airJumps = 1; P.dashes = ROSTER[who].dashes || 2; }
     return true;
   }
   const c = P.chain;
@@ -1238,7 +1257,7 @@ function drawRubble(dt) {
   }
 }
 
-const RUSH_COOLDOWN = 7, RUSH_STUN = .8, STAMPEDE_MAX = 1.2;
+const RUSH_COOLDOWN = 7, RUSH_STUN = .8, STAMPEDE_MAX = 1.2, RUSH_SPEED = 64, STAMPEDE_SPEED = 46;
 // leave the rival standing there, unable to act, for a moment
 function daze() {
   if (E.dead) return;
@@ -1275,7 +1294,7 @@ function bruteActions(look) {
   }
   if (P.hold > .22 && !P.crossUsed && (!m || m.name === 'combo')) { P.crossUsed = true; startCm('charge', { power: 0 }); say('TITAN PUNCH', .8); }
   if (pressed.has('mouse2') && free && P.rushCd > 0) say('RUSH READY IN ' + Math.ceil(P.rushCd) + 's', .7);
-  if (pressed.has('mouse2') && free && P.dashes > 0 && P.rushCd <= 0) { P.dashes--; P.rushCd = RUSH_COOLDOWN; startCm('dash', { d: [look[0], Math.max(P.grounded ? 0 : -1, look[1]), look[2]] }); style('dash', 8); sfx(.7, 600, .4); }
+  if (pressed.has('mouse2') && free && P.dashes > 0 && P.rushCd <= 0) { P.dashes--; P.rushCd = RUSH_COOLDOWN; const y = P.grounded ? 0 : Math.min(0, look[1]), h = Math.sqrt(1 - y * y); startCm('dash', { d: [Math.sin(cam.yaw) * h, y, Math.cos(cam.yaw) * h] }); style('dash', 8); sfx(.7, 600, .4); }
   if (pressed.has('KeyE') && P.dashes > 0 && !P.dash) {
     P.cm = null; P.dashes--; P.dash = .16; P.wall = null; P.yaw = cam.yaw;
     const y = P.grounded ? Math.max(0, look[1]) : look[1], l = Math.hypot(look[0], y, look[2]);
@@ -1331,6 +1350,7 @@ function bruteMove(dt) {
       if (bite(9 + p * 8, 40 + p * 60) && !E.dead) { E.vx = Math.sin(P.yaw) * 60; E.vz = Math.cos(P.yaw) * 60; E.vy = 20; E.stun = .7; }
       dust(P.x + Math.sin(P.yaw) * 6, P.y, P.z + Math.cos(P.yaw) * 6, 40, 24); jolt(1.3, .12); style('crossfall', 14);
     }
+    P.vy = Math.max(P.vy - 38 * dt, -75);
     P.vx = Math.sin(P.yaw) * 20 * (1 - m.t / .25); P.vz = Math.cos(P.yaw) * 20 * (1 - m.t / .25);
     if (m.t > .25) done();
     return true;
@@ -1339,7 +1359,7 @@ function bruteMove(dt) {
     if (!m.stampede && m.t > .34 && keys.has('mouse2')) { m.stampede = true; m.tick = 0; say('STAMPEDE', .9); }
     if (!m.stampede) {
       const d = m.d;
-      P.vx = d[0] * 88; P.vy = d[1] * 88; P.vz = d[2] * 88; P.yaw = Math.atan2(d[0], d[2]);
+      P.vx = d[0] * RUSH_SPEED; P.vy = Math.min(P.vy, 0, d[1] * RUSH_SPEED) - 38 * dt; P.vz = d[2] * RUSH_SPEED; P.yaw = Math.atan2(d[0], d[2]);
       smash(P.x + d[0] * 3, P.y + 2.4 + d[1] * 3, P.z + d[2] * 3, 4.6, 34);
       if (!m.hit && bite(6.5, 3)) {
         m.hit = true;
@@ -1352,7 +1372,7 @@ function bruteMove(dt) {
     const turn = Math.atan2(Math.sin(cam.yaw - P.yaw), Math.cos(cam.yaw - P.yaw));
     P.yaw += clamp(turn, -3.2 * dt, 3.2 * dt);
     const fx = Math.sin(P.yaw), fz = Math.cos(P.yaw);
-    P.vx = fx * 66; P.vz = fz * 66; P.vy = Math.max(P.vy - 38 * dt, -60);
+    P.vx = fx * STAMPEDE_SPEED; P.vz = fz * STAMPEDE_SPEED; P.vy = Math.max(Math.min(P.vy, 0) - 38 * dt, -60);
     smash(P.x + fx * 3, P.y + 3, P.z + fz * 3, 4.4, 34);
     if ((m.tick -= dt) <= 0) { m.tick = .09; dust(P.x - fx, P.y, P.z - fz, 8, 9); cam.shake = Math.max(cam.shake, .45); sfx(.4, 300, .12); }
     if (!m.carry && enemyNear(7)) { m.carry = true; E.inv = 0; damageEnemy(3); jolt(.5, .05); }
@@ -2049,7 +2069,7 @@ const ROSTER = {
       ['mouse2', 'Chain (hold)', 'Hooks what you aim at: swing from anything overhead'],
       ['KeyR', 'Reel in', 'While hooked: go to the ground or a car or wall; people are dragged to you'], ['KeyF', 'Ground pound / Meteor Drop', 'In the air, hurls the ball down and follows it'],
       ['KeyG', 'Reel-In / Wrecking Ball', 'Yank out a block, then hold to whirl and throw'], ['KeyT', 'Topple', 'Pull over a tower with a damaged base. Huge damage if it lands on the rival'],
-      ['KeyZ', 'Tripwire', 'Set two ends, press again to rip them out'], ['KeyX', 'Orbit (hold)', 'Circle a tower, slicing it'], ['KeyQ', 'Reaper Sphere', 'Ultimate: a full sphere of blades']] },
+      ['KeyZ', 'Tripwire', 'Set two ends, press again to rip them out'], ['KeyX', 'Orbit (hold)', 'Circle a standing tower you are close to, slicing it'], ['KeyQ', 'Reaper Sphere', 'Ultimate: a full sphere of blades']] },
   cinder: { name: 'FIREBOI', role: 'Twin-blade ember knight', stats: [4, 4, 3, 3], speed: 1.1, jump: 1, armor: .9, power: 1.55, hp: 1240, size: 1, deal: 1.15, camH: 4.3, camD: 10, tempo: 1.05,
     desc: 'A horned knight in charred plate with a molten blade in each hand. Relentless in close, with fire waves for anyone who tries to keep their distance.',
     moves: [['mouse0', 'Twin Fangs', 'Three-cut combo'], ['mouse0', 'Fire Wheel (hold)', 'Spinning blades; you can still move'], ['mouse2', 'Ember Dash', 'Cut straight through anything'],
@@ -2057,7 +2077,7 @@ const ROSTER = {
       ['KeyZ', 'Flicker', 'Blink, behind your rival if near'], ['KeyQ', 'Ember Rain', 'Ultimate: blades fall from the sky']] },
   brute: { name: 'TANKBOI', role: 'Colossal brawler', stats: [4, 1, 2, 3], speed: .8, jump: 1, dashes: 1, ultRate: .55, armor: 1.24, power: 1.44, hp: 750, netHp: 1500, size: 1.9, deal: 1.08, cool: .6, camH: 4.8, camD: 11, tempo: .75,
     desc: 'A mountain of muscle in iron gauntlets. Slower than the rest and a far bigger target, but soaks up punishment, resists being knocked around and hits harder than anyone.',
-    moves: [['mouse0', 'Hammer Fists', 'Very fast alternating left and right'], ['mouse0', 'Titan Punch (hold)', 'Charge, release; longer hits harder'], ['mouse2', 'Bull Rush / Stampede (hold)', 'Barely hurts, but leaves them stunned. Hold to carry them a short way. 7 s cooldown'],
+    moves: [['mouse0', 'Hammer Fists', 'Very fast alternating left and right'], ['mouse0', 'Titan Punch (hold)', 'Charge, release; longer hits harder'], ['mouse2', 'Bull Rush / Stampede (hold)', 'Barely hurts, but leaves them stunned. Hold to carry them a short way. Cannot climb. 7 s cooldown'],
       ['Space', 'Titan Leap (hold)', 'Tap to hop; charge and release to soar. The landing cracks the ground'],
       ['KeyF', 'Landslide', 'Rip up the street and send a rolling wall of rubble'], ['KeyG', 'Grab / Throw', 'Seize the rival, a car, a bystander or rubble; press again or attack to throw'], ['KeyT', 'Thunderclap', 'A ranged shockwave that grows as it flies'],
       ['KeyZ', 'Titan Kick (hold)', 'Charge and release: a front kick that launches'],
@@ -4002,14 +4022,11 @@ function onNet(m) {
     P.vx = num(m.x, -90, 90); P.vy = num(m.y, -20, 60); P.vz = num(m.z, -90, 90); P.grounded = false; P.flying = false;
   } else if (m.t === 'down') { pvp.mine++; say('YOU WIN THE ROUND  ·  ' + pvp.mine + ' - ' + pvp.theirs, 2.5); pvpSpawn(); }
   else if (m.t === 'slide') landslide(num(m.x, -400, 400), num(m.y, 0, 300), num(m.z, -400, 400), num(m.yaw, -10, 10), false, true);
-  else if (m.t === 'clear') {
+  else if (m.t === 'topple') {
     const b = buildings[m.i | 0];
     if (b) {
-      b.vox = b.vox || new Uint8Array(b.nx * b.ny * b.nz).fill(1);
-      b.vox.fill(0, 0, 0);
-      for (let k = 0; k < b.nz; k++) for (let j = Math.max(0, m.cut | 0); j < b.ny; j++) for (let i = 0; i < b.nx; i++) b.vox[i + b.nx * j + b.nx * b.ny * k] = 0;
-      b.falling = b.falling.filter(id => b.vox[id]); b.dirty = cityDirty = true;
-      dust(b.x + b.nx * V / 2, (m.cut | 0) * V, b.z + b.nz * V / 2, 60, 25);
+      dropTower(b, num(m.cut, 0, b.ny - 1) | 0, !!m.alongX, m.sign > 0 ? 1 : -1, true);
+      say('TOWER FALLING!', 1.6); sfx(1, 300, 1.2);
     }
   }
   else if (m.t === 'ping') netSend({ t: 'pong', at: m.at });
@@ -4027,7 +4044,7 @@ function netTick() {
   const shots = waves.filter(w => w.mine).slice(0, 8).map(w => ({ p: w.p, v: w.v, yaw: w.yaw, kind: w.kind, life: w.life, age: w.age }));
   const blocks = thrown.slice(0, 4).map(t => ({ p: t.p, color: t.color, spin: t.spin }));
   netSend({ t: 'state', s: JSON.parse(JSON.stringify(st, (k, v) => k === 'ent' || k === 'o' ? undefined : typeof v === 'number' ? Math.round(v * 100) / 100 : v)),
-    c: pvp.carves.splice(0), w: shots, b: blocks, g: gripping ? { x: E.x, y: E.y, z: E.z, swing: E.swing || 0 } : null });
+    c: pvp.carves.splice(0), r: rain.filter(d => d.mine).slice(0, 30).map(d => ({ x: d.x, y: d.y, z: d.z, floor: d.floor, delay: d.delay })), w: shots, b: blocks, g: gripping ? { x: E.x, y: E.y, z: E.z, swing: E.swing || 0 } : null });
   // knockbacks I dealt this tick
   if (E.stun > 0 && !gripping) { netSend({ t: 'knock', x: E.vx, y: E.vy, z: E.vz }); E.stun = 0; E.flung = false; }
   if (performance.now() - pingAt > 1000) { pingAt = performance.now(); netSend({ t: 'ping', at: pingAt }); }
@@ -4068,13 +4085,14 @@ function drawRemote(time) {
   Object.assign(P, saved);
   if (m.g === null && E.swing) E.swing = 0;
   // their projectiles, drawn alongside mine
-  const own = waves;
+  const own = waves, ownRain = rain;
   try {
     waves = own.concat((m.w || []).slice(0, 8).filter(w => Array.isArray(w.p) && Array.isArray(w.v)).map(w => ({ ...w, mine: false })));
+    rain = ownRain.concat((m.r || []).slice(0, 30).filter(d => Number.isFinite(d.x) && Number.isFinite(d.y)).map(d => ({ ...d, mine: false })));
     drawEnemyEffects(time);
     for (const b of (m.b || []).slice(0, 4)) push(b.p[0], b.p[1], b.p[2], 0, 2.6, 2.2, 2.6, b.spin * .7, b.color, b.spin);
   } catch (e) { console.warn(e); }
-  waves = own;
+  waves = own; rain = ownRain;
 }
 
 // actions are what the game asks about; bindings say which physical input drives each
@@ -4391,7 +4409,7 @@ const sim60 = () => { fighting = true; for (let i = 0; i < 2; i++) step(STEP); u
 window.game = {
   async bench(n = 60) { render(0, 1); await device.queue.onSubmittedWorkDone(); const t = performance.now(); for (let i = 0; i < n; i++) render(0, 1); await device.queue.onSubmittedWorkDone(); return { ms: +((performance.now() - t) / n).toFixed(2), w: canvas.width, h: canvas.height }; },
   P, cam, press, release, step, STEP, carve, updateCollapse, resetWorld, render,
-  setDebug(v) { debug = v; }, openRoom, netTick, netClose, get pvp() { return pvp; }, get netStatus() { return netStatus; }, pick(k) { pickWho = k; }, step60(s) { for (let t = 0; t < s; t += 1 / 60) { sim60(); } }, get roster() { return ROSTER; }, TRIM, setMatch, get flames() { return flames; }, get rubble() { return rubble; }, get slides() { return slides; }, settings, show, startMatch, saveGame, loadGame, toMain, pause,
+  setDebug(v) { debug = v; }, get fallers() { return fallers; }, openRoom, netTick, netClose, get pvp() { return pvp; }, get netStatus() { return netStatus; }, pick(k) { pickWho = k; }, step60(s) { for (let t = 0; t < s; t += 1 / 60) { sim60(); } }, get roster() { return ROSTER; }, TRIM, setMatch, get flames() { return flames; }, get rubble() { return rubble; }, get slides() { return slides; }, settings, show, startMatch, saveGame, loadGame, toMain, pause,
   get mode() { return mode; }, get screen() { return screen; }, get who() { return who; }, get foe() { return foe; },
   chooseFighter(name) { setMatch(name, 'cinder'); }, get rain() { return rain; }, get dyn() { return dynCount; }, E, get waves() { return waves; }, setFighting(v) { fighting = v; }, startMove, damageEnemy,
   get buildings() { return buildings; },
