@@ -1083,12 +1083,12 @@ function cinderMove(dt) {
 
 // the landing: crater, shockwave, and anyone close takes it
 function titanLand(speed) {
-  const p = clamp((speed - 25) / 50, P.leaping ? .3 : 0, 1), r = 6 + p * 9;
+  const p = clamp((speed - 25) / 50, P.leaping ? .3 : 0, 1), r = 4 + p * 6;
   byEnemy = true;
   carve(P.x, P.y + .5, P.z, r * .8, 30);
   for (let i = 0; i < 10; i++) { const a = i / 10 * 6.283; carve(P.x + Math.sin(a) * r, P.y + 1, P.z + Math.cos(a) * r, 2.8, 24); }
   byEnemy = false;
-  if (enemyNear(r + 4)) { E.inv = 0; damageEnemy(25 + p * 40); if (!E.dead) { E.vy = 18 + p * 14; E.awake = true; } }
+  if (enemyNear(r + 4)) { E.inv = 0; damageEnemy(10 + p * 18); if (!E.dead) { E.vy = 18 + p * 14; E.awake = true; } }
   if (P.y < 1.5) addCrater(P.x, P.z, r);
   dust(P.x, P.y, P.z, 50 + p * 60 | 0, 18 + p * 18);
   jolt(.8 + p, .05 + p * .07); sfx(1, 220, .5 + p * .6);
@@ -1096,9 +1096,9 @@ function titanLand(speed) {
 }
 function titanLeap(charge) {
   const k = clamp((charge - .16) / .8, 0, 1), flat = [Math.sin(cam.yaw), Math.cos(cam.yaw)];
-  const forward = (16 + 30 * k) * (1 - clamp(cam.pitch, 0, 1.2) * .55);   // aim high to go up, level to go far
+  const forward = (10 + 13 * k) * (1 - clamp(cam.pitch, 0, 1.2) * .55);   // aim high to go up, level to go far
   P.vx = flat[0] * forward; P.vz = flat[1] * forward;
-  P.vy = 26 + 22 * k + clamp(cam.pitch, 0, 1.2) * 10 * k;
+  P.vy = 22 + 12 * k + clamp(cam.pitch, 0, 1.2) * 6 * k;
   P.grounded = false; P.coyote = 0; P.leaping = true; P.yaw = cam.yaw;
   byEnemy = true; if (P.y > 1) carve(P.x, P.y - 1.5, P.z, 3.5, 12); byEnemy = false;
   if (P.y < 1.5) addCrater(P.x, P.z, 3 + k * 5);
