@@ -39,13 +39,13 @@ RMB hold   chain swing      Space: zip
 
 <b>ATTACK</b>
 LMB        slash / throw sickle (tap fast)
-LMB hold   CYCLONE
+LMB hold   CROSSFALL: swipe, swipe, overhead slam
 F          ground pound; in air: METEOR DROP
 G          REEL-IN a block; G hold+release: WRECKING BALL
 T          TOPPLE a weakened tower
 Z, Z, Z    TRIPWIRE: set, set, rip (run into it to launch)
 X hold     ORBIT a tower
-Q          REAPER STORM (full style bar)
+Q          REAPER SPHERE (full style bar)
 
 <b>CHAIN TRICKS</b>
 LMB on a wall or right after a zip: GUILLOTINE
@@ -55,7 +55,8 @@ C while hooked, release:            SLINGSHOT
 
 R rebuild city   O quality   P 60 fps cap
 B debug mode (then N: slow motion; no damage)
-K summon / reset CINDER      dodge with E</div>
+K summon / reset rival       dodge with E
+1 kusarigama   2 play as CINDER</div>
 <div id="stats" class="p"></div>
 <div id="bar"><i></i></div>
 <div id="style"><i></i></div>
@@ -72,7 +73,7 @@ const V = 3;                 // voxel size (m)
 const BLOCK = 48;            // city block pitch (m)
 const HALF = 6;              // city spans [-HALF, HALF) blocks
 const MAX_STATIC = 160000;   // instance capacity for the city
-const MAX_DYN = 1500;
+const MAX_DYN = 2200;
 const NDEB = 2048;           // GPU debris particles
 const STEP = 1 / 120;
 
@@ -97,7 +98,7 @@ function genCity() {
       const b = { x, z, nx, ny, nz, color: PALETTE[rnd() * PALETTE.length | 0], vox: null, falling: [], dirty: true, cache: null };
       list.push(b); buildings.push(b);
     };
-    const h = () => 4 + (rnd() * (8 + downtown * 24) | 0);
+    const h = () => 8 + (rnd() * (14 + downtown * 46) | 0);   // storeys of 3 m, tallest downtown
     if (rnd() < .45) add(ox, oz, 10, 10, h());
     else for (const dx of [0, 18]) for (const dz of [0, 18]) if (rnd() < .8) add(ox + dx, oz + dz, 4, 4, h());
     blocks.set(blockKey(bx, bz), list);
@@ -151,6 +152,7 @@ let byEnemy = false;
 function carve(x, y, z, r, push = 14) {
   let removed = 0;
   if (!byEnemy) strikeEnemy(x, y, z, r);
+  disturb(x, y, z, r);
   for (const b of buildings) {
     if (x + r <= b.x || x - r >= b.x + b.nx * V || z + r <= b.z || z - r >= b.z + b.nz * V || y - r >= b.ny * V) continue;
     let touched = false;
@@ -269,7 +271,7 @@ const cam = { yaw: .7, pitch: -.05, dist: 10, shake: 0, fov: 70, pos: [0, 5, -10
 const P = {};
 function resetPlayer() {
   Object.assign(P, { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: .7, grounded: true, wall: null,
-    charge: -1, airJumps: 1, dashes: 2, dash: 0, dashDir: [0,0,1], act: null, swings: 0, hp: 100, iframe: 0, hurtT: 0, style: 0, zipT: 0, atkBuf: 0, hold: 0, cyclone: null, storm: null, meteor: null, guill: null, kick: null, orbit: null, wire: null,
+    charge: -1, airJumps: 1, dashes: 2, dash: 0, dashDir: [0,0,1], act: null, cm: null, swings: 0, hp: 100, iframe: 0, hurtT: 0, style: 0, zipT: 0, atkBuf: 0, hold: 0, cross: null, crossUsed: false, storm: null, meteor: null, guill: null, kick: null, orbit: null, wire: null,
     reelBlock: null, whirl: null, carving: null, wasCarving: false, carveY: undefined, slashSide: 1, glide: false, dive: false, apex: 0,
     punch: 0, cool: 0, phase: 0, holding: null, coyote: 0, wallLock: 0, spaceAir: 0,
     h: 2, slide: false, slideCd: 0, mantle: null, jumpBuf: 0, landT: 1, airPress: false, px: 0, py: 0, pz: 0, chain: null, lash: null, reel: null, slashT: 0 });
@@ -439,9 +441,9 @@ function sickle(look) {
 
 // ── style meter: variety fills it, a full bar unlocks the finisher ──
 const COMBOS = { 'STREET REAPER': ['slide', 'jump', 'slash'], 'SKYFALL': ['zip', 'jump', 'meteor'],
-                 'LUMBERJACK': ['cyclone', 'topple'], 'NEVER LAND': ['swing', 'dash', 'swing', 'glide'] };
-const NAMES = { cyclone: 'CYCLONE', meteor: 'METEOR DROP', guillotine: 'GUILLOTINE', wallcarve: 'WALL CARVE', kick: 'PENDULUM KICK',
-  slingshot: 'SLINGSHOT', orbit: 'ORBIT', tripwire: 'TRIPWIRE', topple: 'TOPPLE', reel: 'REEL-IN', wreck: 'WRECKING BALL', storm: 'REAPER STORM' };
+                 'LUMBERJACK': ['crossfall', 'topple'], 'NEVER LAND': ['swing', 'dash', 'swing', 'glide'] };
+const NAMES = { crossfall: 'CROSSFALL', meteor: 'METEOR DROP', guillotine: 'GUILLOTINE', wallcarve: 'WALL CARVE', kick: 'PENDULUM KICK',
+  slingshot: 'SLINGSHOT', orbit: 'ORBIT', tripwire: 'TRIPWIRE', topple: 'TOPPLE', reel: 'REEL-IN', wreck: 'WRECKING BALL', storm: 'REAPER SPHERE' };
 let debug = false, timeScale = 1;
 let history = [], popup = { text: '', t: 0 }, hitStop = 0, clock = 0;
 function say(text, t = 1.1) { popup = { text, t }; }
@@ -476,12 +478,82 @@ const buildingAt = p => buildings.find(b => p[0] > b.x - .4 && p[0] < b.x + b.nx
 
 const act = (name, dur) => { P.act = { name, t: 0, dur }; };
 const enemyNear = r => !E.dead && Math.hypot(E.x - P.x, E.y - P.y, E.z - P.z) < r;
-function startCyclone() { P.cyclone = { t: 0, a: cam.yaw, cd: 0, r: 5 }; P.lash = P.reel = null; style('cyclone', 14); }
-function cycloneTip() { const c = P.cyclone; return [P.x + Math.sin(c.a) * c.r, P.y + 1.4, P.z + Math.cos(c.a) * c.r]; }
-function stormTip() { const c = P.storm; return [P.x + Math.sin(c.a) * c.r, P.y + 1.4, P.z + Math.cos(c.a) * c.r]; }
+// CROSSFALL timings: sickle swipe, ball swipe, both overhead, slam
+const CF = { a: .18, b: .36, up: .52, hit: .64, end: .86 };
+const ease01 = v => { const k = clamp(v, 0, 1); return k * k * (3 - 2 * k); };
+const lerp = (a, b, k) => a + (b - a) * k;
+function startCross() {
+  let yaw = cam.yaw;
+  if (enemyNear(16)) yaw = cam.yaw = Math.atan2(E.x - P.x, E.z - P.z);
+  P.cross = { t: 0, yaw, hits: 0, slammed: false };
+  P.crossUsed = true; P.lash = P.reel = null; P.slashT = 0; P.act = null; P.yaw = yaw;
+  style('crossfall', 14); sfx(.5, 1500, .2);
+}
+// where one end of the weapon is at time t. side +1 = sickle, -1 = claw ball
+function crossTip(side, t = P.cross.t) {
+  let off, r, h;
+  if (t < CF.a) {                              // sickle cuts in from its side; ball winds out
+    const k = ease01(t / CF.a);
+    if (side > 0) { off = lerp(2.1, -.25, k); r = 11; h = 1.4; } else { off = -2.1; r = lerp(2, 11, k); h = 1.4; }
+  } else if (t < CF.b) {                       // ball cuts in from the other side
+    const k = ease01((t - CF.a) / (CF.b - CF.a));
+    if (side > 0) { off = lerp(-.25, .7, k); r = lerp(11, 8, k); h = lerp(1.4, 3, k); } else { off = lerp(-2.1, .25, k); r = 11; h = 1.4; }
+  } else if (t < CF.up) {                      // both swing high overhead
+    const k = ease01((t - CF.b) / (CF.up - CF.b));
+    off = side > 0 ? lerp(.7, .22, k) : lerp(.25, -.22, k);
+    r = lerp(side > 0 ? 8 : 11, 2.5, k); h = lerp(side > 0 ? 3 : 1.4, 14, k);
+  } else {                                     // and come down together
+    const k = clamp((t - CF.up) / (CF.hit - CF.up), 0, 1);
+    off = side * lerp(.22, .03, k); r = lerp(2.5, 10, Math.sin(k * Math.PI / 2)); h = lerp(14, .4, k * k);
+  }
+  const a = P.cross.yaw + off;
+  return [P.x + Math.sin(a) * r, P.y + h, P.z + Math.cos(a) * r];
+}
+function updateCross(dt) {
+  const c = P.cross;
+  if (!c) return;
+  const before = c.t;
+  c.t += dt; P.yaw = c.yaw;
+  const swiping = c.t < CF.b ? (c.t < CF.a ? 1 : -1) : 0;
+  const falling = c.t >= CF.up && !c.slammed;
+  // cut along the path the ends are travelling
+  for (const side of swiping ? [swiping] : falling ? [1, -1] : []) {
+    if (Math.floor(c.t / .025) === Math.floor(before / .025)) break;
+    const p = crossTip(side), mid = [(p[0] + P.x) / 2, p[1], (p[2] + P.z) / 2];
+    if (p[1] > .8 && carve(...p, 2.7, 20) + carve(...mid, 2.2, 14)) { cam.shake = Math.max(cam.shake, .35); sfx(.45, 1200, .12); }
+  }
+  // each swipe and the slam can each catch him once
+  const phase = swiping > 0 ? 1 : swiping < 0 ? 2 : 0;
+  if (phase && !(c.hits & phase) && enemyNear(13)) {
+    const p = crossTip(swiping);
+    const diff = Math.atan2(p[0] - P.x, p[2] - P.z) - Math.atan2(E.x - P.x, E.z - P.z);
+    if (Math.abs(Math.atan2(Math.sin(diff), Math.cos(diff))) < .55) { c.hits |= phase; E.inv = 0; damageEnemy(16); }
+  }
+  if (c.t >= CF.hit && !c.slammed) {
+    c.slammed = true;
+    const x = P.x + Math.sin(c.yaw) * 9, z = P.z + Math.cos(c.yaw) * 9, y = P.y;
+    const caught = !E.dead && Math.hypot(E.x - x, E.y - y, E.z - z) < 10;
+    E.inv = .2;                                // the blast below is worth one big hit, not several small ones
+    carve(x, y + 1.5, z, 8, 28);
+    for (let d = 2; d < 8; d += 2.5) carve(P.x + Math.sin(c.yaw) * d, y + 1, P.z + Math.cos(c.yaw) * d, 3, 18);
+    if (caught) { E.inv = 0; damageEnemy(45); }
+    if (y < 1) { addCrater(x, z, 8); }
+    dust(x, y, z, 70, 24); jolt(1.4, .11); sfx(1, 280, .9);
+  }
+  if (c.t >= CF.end) { P.reel = { from: [P.x + Math.sin(c.yaw) * 9, P.y + .5, P.z + Math.cos(c.yaw) * 9], t: 0 }; P.cross = null; }
+}
+
+// REAPER SPHERE: he rises and everything inside a growing ball is shredded
+const SPHERE_MAX = 28, SPHERE_TIME = 1.3;
+const sphereCentre = () => [P.x, P.y + 1.4, P.z];
+function spherePoint(angle, tilt, r) {         // a point on a tilted great circle
+  const [x, y, z] = sphereCentre(), u = Math.cos(angle) * r, v = Math.sin(angle) * r;
+  return [x + u, y + v * Math.sin(tilt), z + v * Math.cos(tilt)];
+}
 function startStorm() {
   if (P.style < 100) { say('STYLE ' + (P.style | 0) + '%', .7); return; }
-  dropChain(false); P.style = 0; P.storm = { t: 0, a: 0, r: 4, cd: 0 }; P.cyclone = P.lash = P.orbit = null;
+  dropChain(false); P.style = 0; P.storm = { t: 0, a: 0, r: 4, cd: 0, hit: false };
+  P.cross = P.lash = P.orbit = null; P.wall = null;
   style('storm', 0); sfx(1, 500, 1);
 }
 function startGuillotine(n) {
@@ -624,17 +696,7 @@ function updateMoves(dt) {
   P.zipT -= dt; popup.t -= dt;
   if (P.style < 100) P.style = Math.max(0, P.style - dt * (P.grounded && Math.hypot(P.vx, P.vz) < 10 ? 1.5 : .25));
 
-  const c = P.cyclone;
-  if (c) {
-    c.t += dt; c.r = Math.min(14, 5 + c.t * 8); c.a += dt * (16 + Math.min(c.t, 1) * 8); P.yaw = c.a;
-    if ((c.cd -= dt) <= 0) {
-      c.cd = .025;
-      if (enemyNear(c.r + 1.5)) damageEnemy(7);
-      const p = cycloneTip();
-      if (carve(...p, 2.7, 22)) { cam.shake = Math.max(cam.shake, .35); sfx(.5, 1200, .15); P.style = Math.min(100, P.style + .4); }
-    }
-    if (!keys.has('mouse0')) P.cyclone = null;
-  }
+  updateCross(dt);
 
   if (P.reelBlock && (P.reelBlock.t += dt / .16) >= 1) { P.holding = P.reelBlock.color; P.reelBlock = null; jolt(.3); }
   const w = P.whirl;
@@ -664,15 +726,30 @@ function specialMove(dt, wx, wz, crouchKey) {
   P.carving = null;
   const st = P.storm;
   if (st) {
-    st.t += dt; st.a += dt * 30; st.r = Math.min(30, 4 + st.t * 28); P.yaw = st.a;
-    P.vx *= 1 - 6 * dt; P.vz *= 1 - 6 * dt; P.vy = P.y < 7 && st.t < .5 ? 14 : 0;
+    st.t += dt; st.a += dt * 13; P.yaw += dt * 22;
+    st.r = lerp(4, SPHERE_MAX, ease01(st.t / .95));
+    P.vx *= 1 - 7 * dt; P.vz *= 1 - 7 * dt;
+    P.vy = st.t < .4 ? 24 : 0;                              // rise, then hang in the middle of it
     if ((st.cd -= dt) <= 0) {
-      st.cd = .06;
-      if (enemyNear(st.r + 2)) damageEnemy(22);
-      for (let i = 0; i < 8; i++) { const a = st.a + i * Math.PI / 4; carve(P.x + Math.sin(a) * st.r, P.y + 1.5, P.z + Math.cos(a) * st.r, 3.4, 30); }
-      cam.shake = 1; sfx(.8, 900, .15);
+      st.cd = .07;
+      const c = sphereCentre();
+      byEnemy = true; carve(...c, st.r, 34); byEnemy = false;   // one solid sphere; the enemy is handled below
+      if (!st.hit && enemyNear(st.r + 1)) { st.hit = true; E.inv = 0; damageEnemy(160); }
+      if (!st.scorched && st.r > 18) { st.scorched = true; addCrater(P.x, P.z, 15); }
+      for (let i = 0; i < 14; i++) {                        // grit thrown off the surface
+        const a = rr(0, 6.28), e = Math.asin(rr(-1, 1)), x = c[0] + Math.cos(e) * Math.sin(a) * st.r, y = c[1] + Math.sin(e) * st.r, z = c[2] + Math.cos(e) * Math.cos(a) * st.r;
+        if (y > 0) debris(x, y, z, rr(.3, .8), [.62, .6, .57], (x - c[0]) * .5, (y - c[1]) * .5 + 4, (z - c[2]) * .5, rr(.4, 1));
+      }
+      cam.shake = 1.1; sfx(.8, 900, .15);
     }
-    if (st.t > 1.1) P.storm = null;
+    if (st.t > SPHERE_TIME) P.storm = null;
+    return true;
+  }
+  if (P.cross) {
+    const t = P.cross.t;
+    P.vx *= 1 - 9 * dt; P.vz *= 1 - 9 * dt;
+    if (!P.grounded) P.vy = t < CF.up ? Math.max(P.vy - 38 * dt, -3) : -80;   // hang, then drop with the slam
+    else P.vy = -10;
     return true;
   }
   const m = P.meteor;
@@ -742,13 +819,138 @@ function specialMove(dt, wx, wz, crouchKey) {
   return false;
 }
 
+function startCm(name, extra = {}) {
+  P.cm = { name, t: 0, n: 0, spin: P.yaw, cd: 0, ...extra };
+  P.yaw = cam.yaw; P.act = null;
+}
+function cinderActions(look) {
+  const m = P.cm, free = !m || m.name === 'combo' && m.t > .12;
+  if (pressed.has('mouse0')) { P.atkBuf = .18; P.hold = 0; }
+  P.atkBuf -= STEP;
+  P.hold = keys.has('mouse0') ? P.hold + STEP : 0;
+  if (!keys.has('mouse0')) P.crossUsed = false;
+  if (P.atkBuf > 0 && free) {                              // twin-blade combo
+    P.atkBuf = 0; P.swings = (P.swings + 1) % 3;
+    if (enemyNear(9)) cam.yaw = Math.atan2(E.x - P.x, E.z - P.z);
+    startCm('combo', { n: P.swings }); style('slash', 5); sfx(.3, 2200, .12);
+  }
+  if (P.hold > .24 && !P.crossUsed && (!m || m.name === 'combo')) { P.crossUsed = true; startCm('whirl'); style('crossfall', 14); say('FIRE WHEEL', .8); }
+  if (pressed.has('mouse2') && free && P.dashes > 0) {     // Ember Dash
+    P.dashes--; startCm('dash', { d: look.slice() }); style('dash', 8); sfx(.5, 1400, .3);
+  }
+  if (pressed.has('KeyE') && P.dashes > 0 && !P.dash) {    // ordinary dodge dash
+    P.cm = null; P.dashes--; P.dash = .18; P.wall = null; P.yaw = cam.yaw;
+    const y = P.grounded ? Math.max(0, look[1]) : look[1], l = Math.hypot(look[0], y, look[2]);
+    P.dashDir = [look[0] / l, y / l, look[2] / l]; style('dash', 5); sfx(.35, 1500, .25);
+  }
+  if (pressed.has('KeyF') && free) {                       // Comet Cleave
+    const r = raycast(aimOrigin(look), look, 80);
+    let to = r ? r.p : [P.x + Math.sin(cam.yaw) * 25, P.y, P.z + Math.cos(cam.yaw) * 25];
+    if (enemyNear(45) && Math.hypot(E.x - to[0], E.z - to[2]) < 14) to = [E.x, E.y, E.z];
+    P.wall = null; P.vy = 44; P.grounded = false;
+    startCm('leap', { to, slammed: false }); style('meteor', 16); say('COMET CLEAVE', .8);
+  }
+  if (pressed.has('KeyG') && free) {                       // Cross Flare
+    const r = raycast(aimOrigin(look), look, 120);
+    const t = enemyNear(90) && Math.abs(Math.atan2(Math.sin(Math.atan2(E.x - P.x, E.z - P.z) - cam.yaw), Math.cos(Math.atan2(E.x - P.x, E.z - P.z) - cam.yaw))) < .3
+      ? [E.x, E.y + 1.6, E.z] : r ? r.p : [0, 1, 2].map(i => cam.pos[i] + look[i] * 120);
+    const from = [P.x, P.y + 1.9, P.z], d = t.map((v, i) => v - from[i]), l = Math.hypot(...d) || 1;
+    waves.push({ p: from, v: d.map(v => v / l * 62), yaw: Math.atan2(d[0], d[2]), life: 1.5, cd: 0, mine: true, hit: false });
+    startCm('wave'); style('reel', 8); sfx(.8, 900, .4);
+  }
+  if (pressed.has('KeyT') && free) { startCm('rise', { hit: false }); P.vy = 36; P.grounded = false; style('kick', 12); say('PHOENIX RISE', .8); }
+  if (pressed.has('KeyZ') && free) {                       // Flicker
+    let spot = null;
+    if (enemyNear(40)) spot = [E.x - Math.sin(E.yaw) * 3.5, E.y, E.z - Math.cos(E.yaw) * 3.5];
+    for (let d = 22; d > 4 && !spot; d -= 3) {
+      const p = [P.x + look[0] * d, Math.max(0, P.y + look[1] * d), P.z + look[2] * d];
+      if (!blockedAt(p[0], p[1], p[2], H)) spot = p;
+    }
+    if (spot && !blockedAt(spot[0], spot[1], spot[2], H)) {
+      dust(P.x, P.y, P.z, 14, 9); [P.x, P.y, P.z] = spot; P.px = P.x; P.py = P.y; P.pz = P.z; dust(P.x, P.y, P.z, 14, 9);
+      if (enemyNear(8)) cam.yaw = Math.atan2(E.x - P.x, E.z - P.z);
+      P.iframe = .25; P.wall = null; startCm('blink'); style('zip', 8); sfx(.5, 3000, .2);
+    }
+  }
+  if (pressed.has('KeyQ')) {                               // ultimate: Ember Rain
+    if (P.style < 100) say('STYLE ' + (P.style | 0) + '%', .7);
+    else {
+      const r = raycast(aimOrigin(look), look, 90);
+      const c = enemyNear(80) ? [E.x, E.y, E.z] : r ? r.p : [P.x + look[0] * 30, P.y, P.z + look[2] * 30];
+      callRain(...c, 22, true); P.style = 0; startCm('rain'); say('EMBER RAIN', 1.4); sfx(1, 600, 1);
+    }
+  }
+}
+
+// timers, blade hits and movement for the knight. Returns true when it drives velocity
+function cinderMove(dt) {
+  const m = P.cm;
+  if (!m) return false;
+  m.t += dt;
+  const done = () => { if (P.cm === m) P.cm = null; };
+  const cut = (dist, up, r, push = 20) => { byEnemy = true; const n = carve(P.x + Math.sin(P.yaw) * dist, P.y + up, P.z + Math.cos(P.yaw) * dist, r, push); byEnemy = false; if (n) { cam.shake = Math.max(cam.shake, .4); sfx(.6, 900, .18); } };
+  const bite = (r, dmg) => { if (enemyNear(r)) { E.inv = 0; damageEnemy(dmg); return true; } return false; };
+  if (m.name === 'combo') {
+    P.yaw = cam.yaw;
+    if (!m.done && m.t > .06) { m.done = true; cut(3.2, 1.6, 3.2); bite(6, m.n === 2 ? 22 : 13); }
+    if (enemyNear(14) && !enemyNear(3.5) && m.t < .1 && P.grounded) { P.x += 0; P.vx = Math.sin(P.yaw) * 26; P.vz = Math.cos(P.yaw) * 26; }
+    if (m.t > MY_TIMES.combo + .1) done();
+    return false;
+  }
+  if (m.name === 'whirl') {
+    m.spin += dt * 24;
+    if ((m.cd -= dt) <= 0) {
+      m.cd = .07;
+      byEnemy = true;
+      for (const a of [m.spin, m.spin + Math.PI]) carve(P.x + Math.sin(a) * 3.8, P.y + 1.6, P.z + Math.cos(a) * 3.8, 2.7, 20);
+      byEnemy = false;
+      if (enemyNear(6.5)) damageEnemy(9);
+    }
+    if (!keys.has('mouse0') || m.t > 2.6) done();
+    return false;                                           // you can still run and jump while spinning
+  }
+  if (m.name === 'dash') {
+    const d = m.d;
+    P.vx = d[0] * 78; P.vy = d[1] * 78; P.vz = d[2] * 78;
+    cut(2.5, 1.2 + d[1] * 2, 3.5, 22);
+    if (!m.hit && bite(5, 28)) { m.hit = true; P.dashes = 2; }
+    if (m.t > .28) { P.vx *= .3; P.vy *= .2; P.vz *= .3; done(); }
+    return true;
+  }
+  if (m.name === 'rise') {
+    P.vx *= 1 - 3 * dt; P.vz *= 1 - 3 * dt; P.vy -= 38 * dt;
+    if (!m.hit && m.t > .05) { m.hit = true; cut(3, 3.5, 3.4); if (bite(6.5, 20)) E.vy = 34; }
+    if (m.t > .4) { P.airJumps = 1; done(); }
+    return true;
+  }
+  if (m.name === 'leap') {
+    if (m.t < .32) { P.vy -= 60 * dt; return true; }        // hang at the top, then plunge at the mark
+    const d = [m.to[0] - P.x, m.to[1] - P.y, m.to[2] - P.z], l = Math.hypot(...d) || 1;
+    P.vx = d[0] / l * 100; P.vy = d[1] / l * 100; P.vz = d[2] / l * 100;
+    P.yaw = Math.atan2(d[0], d[2]);
+    if (l < 3.5 || P.grounded && m.t > .4 || m.t > 1.4) {
+      m.slammed = true;
+      byEnemy = true; carve(P.x, P.y + 1, P.z, 8.5, 28); byEnemy = false;
+      if (enemyNear(11)) { E.inv = 0; damageEnemy(48); }
+      if (P.y < 1.5) addCrater(P.x, P.z, 9);
+      dust(P.x, P.y, P.z, 60, 24); jolt(1.3, .1); sfx(1, 280, .9);
+      P.vx = P.vy = P.vz = 0; done();
+    }
+    return true;
+  }
+  if (m.name === 'rain') { P.vx *= 1 - 6 * dt; P.vz *= 1 - 6 * dt; if (m.t > MY_TIMES.rain) done(); return false; }
+  if (m.t > (MY_TIMES[m.name] || .3)) done();
+  return false;
+}
+
 function actions() {
   const look = lookDir();
-  const busy = P.storm || P.meteor || P.guill || P.kick;
-  // attack: instant, buffered; keep holding to spin up the cyclone
+  if (who === 'cinder') return cinderActions(look);
+  const busy = P.storm || P.meteor || P.guill || P.kick || P.cross;
+  // attack: instant, buffered; keep holding for CROSSFALL
   P.atkBuf -= STEP;
   if (pressed.has('mouse0')) { P.atkBuf = .16; P.hold = 0; }
-  if (P.atkBuf > 0 && P.cool <= 0 && !busy && !P.chain && !P.cyclone) {
+  if (P.atkBuf > 0 && P.cool <= 0 && !busy && !P.chain) {
     P.atkBuf = 0;
     const wall = P.wall || (P.zipT > 0 && !P.grounded && adjacentWall(2.2));
     if (wall && P.y > 6) startGuillotine(wall);
@@ -756,10 +958,12 @@ function actions() {
     else { P.cool = .18; startLash(); style('slash', 4); }
   }
   P.hold = keys.has('mouse0') ? P.hold + STEP : 0;
-  if (P.hold > .2 && !P.cyclone && !busy && !P.chain) startCyclone();
+  if (!keys.has('mouse0')) P.crossUsed = false;
+  if (P.hold > .2 && !P.crossUsed && !busy && !P.chain) startCross();
 
   if (pressed.has('mouse2') && !busy) fireChain();
-  if (pressed.has('KeyE') && !busy) {
+  if (pressed.has('KeyE') && (!busy || P.cross)) {   // a dash cancels Crossfall
+    P.cross = null;
     if (P.chain?.attached && Math.hypot(P.vx, P.vy, P.vz) > 22) startKick();
     else if (P.dashes > 0 && !P.dash) {
       dropChain(false); P.orbit = null; P.dashes--; P.dash = .18; P.dive = false; P.wall = null; P.wallLock = .25; P.yaw = cam.yaw;
@@ -839,6 +1043,7 @@ function stepPlayer(dt) {
   updateChain(dt);
   updateLash(dt);
   updateMoves(dt);
+  const driven = cinderMove(dt);
   if (P.chain?.attached && !P.chain.zip && P.jumpBuf > 0) { P.chain.zip = true; P.jumpBuf = 0; style('zip', 8); sfx(.3, 1700, .25); }
 
   // slide / crouch
@@ -888,7 +1093,7 @@ function stepPlayer(dt) {
   const wasCarving = !!P.carving;
   P.wasCarving = wasCarving;
   if (!wasCarving) P.carveY = undefined;
-  if (specialMove(dt, wx, wz, crouchKey)) {
+  if (driven || specialMove(dt, wx, wz, crouchKey)) {
     // the move has set the velocity
   } else if (P.dash > 0) {
     P.dash -= dt;
@@ -959,10 +1164,11 @@ function stepPlayer(dt) {
     P.vy = 0;
   }
   if (P.chain?.attached) constrain(dt);
+  collideCars();
   P.x = clamp(P.x, -limit, limit); P.z = clamp(P.z, -limit, limit);
 
   if (wallN && P.chain?.zip) { P.zipT = .9; dropChain(false); }
-  if (wallN && !P.dash && !P.dive && !P.kick && !P.orbit && !P.guill && !P.storm && !P.carving) {
+  if (wallN && !P.dash && !P.dive && !P.kick && !P.orbit && !P.guill && !P.storm && !P.cross && !P.carving && !driven) {
     const [nx, nz] = wallN;
     const into = -(wx * nx + wz * nz);
     if (into > .35 && tryMantle(nx, nz, Math.max(speedIn, sprint ? 20 : 12))) { dropChain(false); pressed.clear(); released.clear(); return; }
@@ -1013,14 +1219,16 @@ function step(dt) {
 }
 
 // ───────────────────────── CINDER: the dual-sword rival ─────────────────────────
-const E = { max: 500 };
+const E = { max: 900 };
+let who = 'hero';                         // which fighter you control: 'hero' or 'cinder'
+let rain = [];                            // falling blades, from either side
 let waves = [], fighting = false;
 const HOME = [0, 0, 38];
 function resetEnemy() {
   Object.assign(E, { x: HOME[0], y: HOME[1], z: HOME[2], px: HOME[0], py: HOME[1], pz: HOME[2], vx: 0, vy: 0, vz: 0, yaw: Math.PI,
     hp: E.max, awake: false, dead: false, state: 'idle', t: 0, cd: 1, hurtT: 0, inv: 0, hits: 0, target: [0, 0, 0], dir: [0, 0, 1],
-    enraged: false, grounded: true, last: '', phase: 0, carveT: 0 });
-  waves = [];
+    enraged: false, grounded: true, last: '', phase: 0, carveT: 0, poked: 0, pokeT: 0, guard: 0, dodged: false });
+  waves = []; rain = [];
 }
 resetEnemy();
 
@@ -1031,13 +1239,26 @@ const MOVES = {
   wave:   { wind: .5,  act: .3,  rest: .45, label: 'CROSS FLARE' },
   whirl:  { wind: .45, act: 1.5, rest: .9,  label: 'FIRE WHEEL' },
   leap:   { wind: .4,  act: 1.3, rest: .85, label: 'COMET CLEAVE' },
-  blink:  { wind: .3,  act: .1,  rest: .05, label: 'FLICKER' },
+  blink:  { wind: .22, act: .1,  rest: .05, label: 'FLICKER' },
+  rise:   { wind: .3,  act: .35, rest: .15, label: 'PHOENIX RISE' },
+  rain:   { wind: .6,  act: .5,  rest: .7,  label: 'EMBER RAIN' },
 };
 
 // everything the player does goes through carve(), so that is also what hurts him
 function damageEnemy(dmg) {
   if (E.dead || E.inv > 0) return;
   E.awake = true;
+  const far = Math.hypot(E.x - P.x, E.y - P.y, E.z - P.z) > 9;
+  if (far && dmg < 40) {
+    if (E.guard > 0 || (E.poked >= 2 && E.state !== 'rest' && E.state !== 'act')) {
+      if (E.guard <= 0) { E.guard = .7; E.poked = 0; say(foeName() + ' PARRIES', .8); startMove('blink'); }
+      E.inv = .12;
+      for (let i = 0; i < 8; i++) debris(E.x, E.y + 2, E.z, rr(.08, .18), [1, .9, .6], rr(-16, 16), rr(2, 16), rr(-16, 16), rr(.15, .4));
+      sfx(.6, 3200, .1);
+      return;
+    }
+    E.poked++; E.pokeT = 3;
+  }
   if (E.state === 'rest') dmg *= 1.5;                       // punish window after his attacks
   E.hp -= dmg; E.inv = .12; E.hurtT = .18;
   for (let i = 0; i < 10; i++) debris(E.x, E.y + 1.6, E.z, rr(.1, .28), [1, .5, .15], rr(-14, 14), rr(0, 14), rr(-14, 14), rr(.2, .6));
@@ -1047,13 +1268,14 @@ function damageEnemy(dmg) {
     const d = Math.hypot(E.x - P.x, E.z - P.z) || 1;
     E.vx = (E.x - P.x) / d * 22; E.vz = (E.z - P.z) / d * 22; E.vy = 12;
   }
-  if (!E.enraged && E.hp < E.max / 2) { E.enraged = true; say('CINDER IGNITES', 1.8); dust(E.x, E.y, E.z, 50, 22); cam.shake = 1; sfx(1, 700, .8); }
+  if (!E.enraged && E.hp < E.max / 2) { E.enraged = true; say(foeName() + ' IGNITES', 1.8); dust(E.x, E.y, E.z, 50, 22); cam.shake = 1; sfx(1, 700, .8); }
   if (E.hp <= 0) {
-    E.hp = 0; E.dead = true; waves = []; say('CINDER DEFEATED  ·  K to rematch', 4);
+    E.hp = 0; E.dead = true; waves = []; say(foeName() + ' DEFEATED  ·  K to rematch', 4);
     for (let i = 0; i < 90; i++) debris(E.x + rr(-1, 1), E.y + rr(0, 3), E.z + rr(-1, 1), rr(.2, .9), i % 3 ? [.12, .1, .1] : [1, .45, .1], rr(-18, 18), rr(2, 26), rr(-18, 18), rr(1.5, 4));
     cam.shake = 1.6; hitStop = .2; sfx(1, 300, 1.4);
   }
 }
+const foeName = () => who === 'cinder' ? 'RIME' : 'CINDER';
 function strikeEnemy(x, y, z, r) {
   if (E.dead) return;
   const d = Math.hypot(E.x - x, clamp(y, E.y, E.y + 2.7) - y, E.z - z);
@@ -1063,10 +1285,10 @@ function strikeEnemy(x, y, z, r) {
 function wreck(x, y, z, r, push = 18) { byEnemy = true; const n = carve(x, y, z, r, push); byEnemy = false; return n; }
 
 function hurtPlayer(dmg, fx, fz, knock = 18) {
-  if (debug || P.iframe > 0 || P.dash > 0 || P.kick || P.storm) return false;   // dashing dodges
+  if (debug || P.iframe > 0 || P.dash > 0 || P.kick || P.storm || P.cm?.name === 'dash') return false;   // dashing dodges
   P.hp -= dmg; P.iframe = .55; P.hurtT = .35;
   const dx = P.x - fx, dz = P.z - fz, d = Math.hypot(dx, dz) || 1;
-  dropChain(false); P.cyclone = P.orbit = P.guill = P.meteor = P.wall = null; P.dive = P.slide = false;
+  dropChain(false); P.cm = P.cross = P.orbit = P.guill = P.meteor = P.wall = null; P.dive = P.slide = false;
   P.vx = dx / d * knock; P.vz = dz / d * knock; P.vy = Math.max(P.vy, 11); P.grounded = false;
   P.style = Math.max(0, P.style - 12);
   cam.shake = Math.max(cam.shake, .9); hitStop = Math.max(hitStop, .07); sfx(.9, 500, .25);
@@ -1082,8 +1304,9 @@ const faceXZ = (x, z) => { E.yaw = Math.atan2(x - E.x, z - E.z); };
 
 function chooseMove() {
   const { flat, d } = toPlayer(), high = d[1] > 9;
-  const pool = high ? ['leap', 'wave', 'blink', 'wave'] : flat < 6 ? ['combo', 'combo', 'whirl', 'leap']
-    : flat < 26 ? ['dash', 'dash', 'whirl', 'wave', 'leap'] : ['wave', 'leap', 'blink', 'dash'];
+  const pool = high ? ['leap', 'wave', 'blink', 'wave'] : flat < 6 ? ['combo', 'combo', 'rise', 'whirl', 'leap']
+    : flat < 26 ? ['dash', 'dash', 'whirl', 'wave', 'leap', 'blink'] : ['wave', 'leap', 'blink', 'dash', 'blink'];
+  if (E.enraged) pool.push('rain', 'rain');
   let m;
   do m = pool[Math.random() * pool.length | 0]; while (m === E.last && pool.some(p => p !== E.last));
   return m;
@@ -1094,9 +1317,57 @@ function startMove(m) {
   sfx(.35, 2600, .3);
 }
 function fireWave(spread) {
-  const from = [E.x, E.y + 1.8, E.z], d = [P.x - from[0], P.y + 1 - from[1], P.z - from[2]], l = Math.hypot(...d) || 1;
+  const from = [E.x, E.y + 1.8, E.z], lead = Math.min(.6, Math.hypot(P.x - E.x, P.z - E.z) / 62) * .8;
+  const d = [P.x + P.vx * lead - from[0], P.y + 1 - from[1], P.z + P.vz * lead - from[2]], l = Math.hypot(...d) || 1;
   const a = Math.atan2(d[0], d[2]) + spread, flat = Math.hypot(d[0], d[2]) / l;
-  waves.push({ p: from, v: [Math.sin(a) * flat * 58, d[1] / l * 58, Math.cos(a) * flat * 58], yaw: a, life: 1.7, cd: 0 });
+  waves.push({ p: from, v: [Math.sin(a) * flat * 62, d[1] / l * 62, Math.cos(a) * flat * 62], yaw: a, life: 1.7, cd: 0, mine: false, hit: false });
+}
+
+// blades that drop on marked spots
+function callRain(x, y, z, n, mine, vx = 0, vz = 0) {
+  for (let i = 0; i < n; i++) {
+    const spread = i ? 4 + Math.random() * 11 : 0, a = i * 2.4 + Math.random();
+    const px = x + vx * .35 * (i % 3) + Math.sin(a) * spread, pz = z + vz * .35 * (i % 3) + Math.cos(a) * spread;
+    const ground = raycast([px, y + 40, pz], [0, -1, 0], y + 45);
+    rain.push({ x: px, z: pz, floor: ground ? ground.p[1] : 0, y: y + 55, delay: .35 + i * .07, mine, track: mine && i % 3 === 0 });
+  }
+}
+function stepShots(dt) {
+  for (let i = waves.length - 1; i >= 0; i--) {
+    const w = waves[i];
+    if (!w.mine && !fighting) continue;
+    for (let a = 0; a < 3; a++) w.p[a] += w.v[a] * dt;
+    let struck = false;
+    if ((w.cd -= dt) <= 0) {
+      w.cd = .04;
+      if (w.mine) { byEnemy = true; carve(...w.p, 2.5, 14); byEnemy = false; } else wreck(...w.p, 2.5, 14);
+    }
+    if (w.mine) {
+      if (!w.hit && !E.dead && Math.hypot(E.x - w.p[0], E.y + 1.6 - w.p[1], E.z - w.p[2]) < 3.2) { w.hit = struck = true; E.inv = 0; damageEnemy(22); }
+    } else struck = Math.hypot(P.x - w.p[0], P.y + 1 - w.p[1], P.z - w.p[2]) < 2.8 && hurtPlayer(14, w.p[0] - w.v[0], w.p[2] - w.v[2], 22);
+    if (!waves.length) return;                              // a defeat clears everything
+    if ((w.life -= dt) <= 0 || struck || w.p[1] < .3) waves.splice(i, 1);
+  }
+  for (let i = rain.length - 1; i >= 0; i--) {
+    const d = rain[i];
+    if (!d.mine && !fighting) continue;
+    if ((d.delay -= dt) > 0) {
+      if (d.track && !E.dead) { const k = Math.min(1, dt * 9); d.x += (E.x - d.x) * k; d.z += (E.z - d.z) * k; d.floor = E.y; }
+      continue;
+    }
+    d.y -= 120 * dt;
+    if (d.y > d.floor + 1) continue;
+    rain.splice(i, 1);
+    if (d.mine) {
+      byEnemy = true; carve(d.x, d.floor + 1, d.z, 4.5, 22); byEnemy = false;
+      if (!E.dead && Math.hypot(E.x - d.x, E.y - d.floor, E.z - d.z) < 6) { E.inv = 0; damageEnemy(40); }
+    } else {
+      wreck(d.x, d.floor + 1, d.z, 3.8, 20);
+      if (Math.hypot(P.x - d.x, P.y - d.floor, P.z - d.z) < 4.2) hurtPlayer(13, d.x, d.z, 14);
+    }
+    dust(d.x, d.floor, d.z, 12, 12); cam.shake = Math.max(cam.shake, .4); sfx(.6, 400, .3);
+    if (!rain.length) return;
+  }
 }
 
 function activeMove(dt) {
@@ -1145,6 +1416,17 @@ function activeMove(dt) {
         cam.shake = Math.max(cam.shake, clamp(1.6 - l / 80, 0, 1.4)); sfx(1, 260, .9);
       }
     }
+  } else if (E.move === 'rise') {                            // uppercut that launches you, then he follows up
+    E.vx = Math.sin(E.yaw) * 26; E.vz = Math.cos(E.yaw) * 26;
+    if (t < .2) E.vy = 30;
+    if (!E.hits && Math.hypot(P.x - E.x, P.y - E.y, P.z - E.z) < 5) {
+      E.hits = 1;
+      if (hurtPlayer(12, E.x, E.z, 5)) { P.vy = 34; P.iframe = .45; }
+      wreck(E.x + Math.sin(E.yaw) * 3, E.y + 3, E.z + Math.cos(E.yaw) * 3, 3);
+    }
+  } else if (E.move === 'rain') {
+    E.vx = E.vz = 0;
+    if (!E.hits) { E.hits = 1; callRain(P.x, P.y, P.z, 11, false, P.vx, P.vz); sfx(.8, 700, .6); }
   } else if (E.move === 'blink' && !E.hits) {               // vanish and reappear behind you
     E.hits = 1;
     dust(E.x, E.y, E.z, 16, 9);
@@ -1170,19 +1452,16 @@ function stepEnemy(dt) {
   P.iframe -= dt; P.hurtT -= dt;
   if (P.iframe < -4 && P.hp < 100) P.hp = Math.min(100, P.hp + dt * 12);        // recover when left alone
   E.inv -= dt; E.hurtT -= dt;
+  stepShots(dt);
   if (E.dead || !fighting) return;
-
-  for (let i = waves.length - 1; i >= 0; i--) {
-    const w = waves[i];
-    for (let a = 0; a < 3; a++) w.p[a] += w.v[a] * dt;
-    if ((w.cd -= dt) <= 0) { w.cd = .04; wreck(...w.p, 2.5, 14); }
-    const struck = Math.hypot(P.x - w.p[0], P.y + 1 - w.p[1], P.z - w.p[2]) < 2.8 && hurtPlayer(14, w.p[0] - w.v[0], w.p[2] - w.v[2], 22);
-    if ((w.life -= dt) <= 0 || struck || w.p[1] < .3) waves.splice(i, 1);
-    if (!waves.length) break;
-  }
+  E.guard -= dt;
+  if ((E.pokeT -= dt) <= 0) E.poked = 0;
+  // sees a big attack winding up and gets out of the way, sometimes
+  if (!P.cross && !P.storm) E.dodged = false;
+  else if (!E.dodged && E.awake && E.state === 'idle') { E.dodged = true; if (Math.random() < .55) startMove('blink'); }
 
   const { flat, l } = toPlayer();
-  if (!E.awake) { if (l < 22) { E.awake = true; say('CINDER', 1.6); sfx(1, 600, .8); } return; }
+  if (!E.awake) { if (l < 22) { E.awake = true; say(foeName(), 1.6); sfx(1, 600, .8); } return; }
   E.t += dt;
   const quick = E.enraged ? 1.35 : 1;
   const m = MOVES[E.move];
@@ -1209,13 +1488,14 @@ function stepEnemy(dt) {
       E.state = 'rest'; E.t = 0;
       if (E.move === 'dash') { E.vx *= .15; E.vz *= .15; E.vy *= .15; }
       if (E.move === 'blink') startMove('combo');
+      else if (E.move === 'rise' && E.hits) startMove('leap');
     }
   } else {                                                   // rest
     E.vx *= 1 - 7 * dt; E.vz *= 1 - 7 * dt;
     if (E.t >= m.rest / quick) { E.state = 'idle'; E.t = 0; E.cd = E.enraged ? .35 : .8; }
   }
 
-  const flying = E.state === 'act' && (E.move === 'dash' || E.move === 'whirl' || E.move === 'leap');
+  const flying = E.state === 'act' && (E.move === 'dash' || E.move === 'whirl' || E.move === 'leap' || E.move === 'rise');
   if (!flying) E.vy -= 45 * dt;
   const bx = enemyMove('x', E.vx * dt), bz = enemyMove('z', E.vz * dt);
   if ((bx || bz) && E.state === 'idle') E.vy = Math.max(E.vy, 26);               // scales the building
@@ -1229,17 +1509,20 @@ function stepEnemy(dt) {
 }
 
 // ── drawing him: charred plate, molten seams, horns, two long blades ──
-const CHAR = [.1,.075,.075], ASH = [.27,.22,.2], BONE = [.8,.74,.62], EMBER = [1,.34,.05], CORE = [1,.72,.22];
-function drawEnemy(time, alpha) {
-  if (E.dead) return;
-  const ex = E.px + (E.x - E.px) * alpha, ey = E.py + (E.y - E.py) * alpha, ez = E.pz + (E.z - E.pz) * alpha;
-  const hs = Math.hypot(E.vx, E.vz), k = E.state === 'idle' ? 0 : clamp(E.t / (MOVES[E.move][E.state === 'wind' ? 'wind' : E.state === 'act' ? 'act' : 'rest']), 0, 1);
+const FIRE = { CHAR: [.1,.075,.075], ASH: [.27,.22,.2], BONE: [.8,.74,.62], EMBER: [1,.34,.05], CORE: [1,.72,.22] };
+const FROST = { CHAR: [.07,.09,.13], ASH: [.22,.27,.36], BONE: [.75,.84,.92], EMBER: [.2,.62,1], CORE: [.75,.95,1] };
+const EMBER = FIRE.EMBER, CORE = FIRE.CORE;
+function drawKnight(K, time, ex, ey, ez, pal) {
+  const { CHAR, ASH, BONE, EMBER, CORE } = pal;
+  const hs = Math.hypot(K.vx, K.vz), k = K.state === 'idle' ? 0 : clamp(K.t / (MOVES[K.move][K.state === 'wind' ? 'wind' : K.state === 'act' ? 'act' : 'rest']), 0, 1);
   // arm: [forward/back angle, sideways sweep]
   let aL = [.35, -.35], aR = [.35, .35], lean = .1 + clamp(hs / 40, 0, .4), crouch = 0, twist = 0;
-  const w = Math.sin(E.phase);
-  let lL = E.grounded ? w * clamp(hs / 14, 0, 1) : -.8, lR = E.grounded ? -lL : .35;
-  const st = E.state, mv = E.move;
-  if (st === 'wind') {
+  const w = Math.sin(K.phase);
+  let lL = K.grounded ? w * clamp(hs / 14, 0, 1) : -.8, lR = K.grounded ? -lL : .35;
+  const st = K.state, mv = K.move;
+  if (mv === 'rise' && st === 'act') { aR = [-3.0, .35]; aL = [-2.6, -.35]; lean = -.25; lL = -1; lR = .4; }
+  else if (mv === 'rain' && st !== 'idle' && st !== 'rest') { aR = [-3.1, .5]; aL = [-3.1, -.5]; lean = -.3; }
+  else if (st === 'wind') {
     crouch = .25 * k; lL = -.8; lR = .5;
     if (mv === 'combo') { aR = [-1.6, 1.8 * k]; aL = [-1.1, -.9]; twist = .6 * k; }
     if (mv === 'dash') { aR = [1.2 * k, .5]; aL = [1.2 * k, -.5]; lean = .8 * k; }
@@ -1249,7 +1532,7 @@ function drawEnemy(time, alpha) {
     if (mv === 'blink') { aR = [-1.2, -.8]; aL = [-1.2, .8]; }
   } else if (st === 'act') {
     if (mv === 'combo') {
-      const n = Math.min(2, E.t / .25 | 0), s = clamp((E.t % .25) / .13, 0, 1);
+      const n = Math.min(2, K.t / .25 | 0), s = clamp((K.t % .25) / .13, 0, 1);
       if (n === 0) { aR = [-1.5, 1.8 - 3.2 * s]; aL = [-1, -.8]; twist = .7 - 1.4 * s; }
       if (n === 1) { aL = [-1.5, -1.8 + 3.2 * s]; aR = [-1, .8]; twist = -.7 + 1.4 * s; }
       if (n === 2) { aR = [-3.2 + 2.8 * s, -.5 * s]; aL = [-3.2 + 2.8 * s, .5 * s]; lean = -.2 + .8 * s; crouch = .25 * s; }
@@ -1258,17 +1541,17 @@ function drawEnemy(time, alpha) {
     if (mv === 'dash') { aR = [1.4, 1.1]; aL = [1.4, -1.1]; lean = 1.25; lL = .5; lR = .9; }
     if (mv === 'wave') { aR = [-.5, -.9]; aL = [-.5, .9]; lean = .55; }
     if (mv === 'whirl') { aR = [-1.55, 1.57]; aL = [-1.55, -1.57]; lean = .25; lL = -.4; lR = .4; }
-    if (mv === 'leap') { aR = E.hits ? [-.2, .2] : [-3.1, .25]; aL = E.hits ? [-.2, -.2] : [-3.1, -.25]; lean = E.hits ? .9 : .2; crouch = E.hits ? .55 : 0; lL = -1; lR = E.hits ? .8 : .2; }
+    if (mv === 'leap') { aR = K.hits ? [-.2, .2] : [-3.1, .25]; aL = K.hits ? [-.2, -.2] : [-3.1, -.25]; lean = K.hits ? .9 : .2; crouch = K.hits ? .55 : 0; lL = -1; lR = K.hits ? .8 : .2; }
   } else if (st === 'rest') { aR = [.1, .5]; aL = [.1, -.5]; lean = .45; crouch = .2; }
 
-  const yaw = E.yaw, cy = Math.cos(yaw), sy = Math.sin(yaw), cl = Math.cos(lean), sl = Math.sin(lean), S = 1.35;
+  const yaw = K.yaw, cy = Math.cos(yaw), sy = Math.sin(yaw), cl = Math.cos(lean), sl = Math.sin(lean), S = 1.35;
   let tw = 0;
   const world = (x, y, z) => {
     const x1 = x * Math.cos(tw) + z * Math.sin(tw), z1 = z * Math.cos(tw) - x * Math.sin(tw);
     const yy = y - 1, y2 = yy * cl - z1 * sl + 1, z2 = yy * sl + z1 * cl;
     return [ex + (x1 * cy + z2 * sy) * S, ey + y2 * S, ez + (z2 * cy - x1 * sy) * S];
   };
-  const flash = E.hurtT > 0, glowing = st === 'wind' && Math.sin(time * 38) > 0;
+  const flash = K.hurtT > 0, glowing = st === 'wind' && Math.sin(time * 38) > 0;
   const box = (x, y, z, wd, h, d, col, m = 0, pitch = 0, turn = 0) => {
     const p = world(x, y, z);
     push(p[0], p[1], p[2], flash ? 3 : m, wd * S, h * S, d * S, yaw + tw + turn, flash ? [1, .8, .7] : col, pitch + lean);
@@ -1293,7 +1576,7 @@ function drawEnemy(time, alpha) {
   box(0, 2.07 - c, 0, .36, .38, .38, CHAR);
   box(0, 1.98 - c, .2, .28, .14, .04, BONE);
   for (const side of [-1, 1]) {
-    box(side * .09, 2.11 - c, .2, .1, .045, .03, E.enraged ? CORE : EMBER, 3);
+    box(side * .09, 2.11 - c, .2, .1, .045, .03, K.enraged ? CORE : EMBER, 3);
     box(side * .23, 2.32 - c, 0, .1, .26, .12, BONE);
     box(side * .31, 2.52 - c, -.07, .075, .24, .08, BONE, 0, -.5);
     box(side * .55, 1.83 - c, 0, .36, .22, .5, CHAR);
@@ -1315,19 +1598,50 @@ function drawEnemy(time, alpha) {
     const along = (dist, wd, thick, len, col, m) => put(hy + dy * dist, hz + dz * dist, wd, thick, len, col, m, Math.atan2(-dy, dz));
     along(.12, .3, .1, .08, BONE, 0);
     along(.82, .075, .18, 1.35, CHAR, 0);
-    along(.82, .1, .05, 1.3, glowing || E.enraged ? CORE : EMBER, 3);
+    along(.82, .1, .05, 1.3, glowing || K.enraged ? CORE : EMBER, 3);
     along(1.62, .06, .1, .3, CORE, 3);
   }
-  if (E.enraged) for (let i = 0; i < 7; i++) {                       // embers circling him
+  if (K.enraged) for (let i = 0; i < 7; i++) {                       // embers circling him
     const a = time * 4 + i * .9;
     push(ex + Math.sin(a) * 1.7, ey + 1 + (time * 2 + i * .55) % 3, ez + Math.cos(a) * 1.7, 3, .14, .14, .14, a, EMBER, a);
   }
 }
+function drawEnemy(time, alpha) {
+  if (E.dead) return;
+  drawKnight(E, time, E.px + (E.x - E.px) * alpha, E.py + (E.y - E.py) * alpha, E.pz + (E.z - E.pz) * alpha, who === 'cinder' ? FROST : FIRE);
+}
+// you, when playing him: translate the player's current move into the same poses
+const MY_TIMES = { combo: .22, dash: .28, wave: .26, whirl: 9, leap: 1.1, rise: .4, rain: .6, blink: .15 };
+function drawCinderPlayer(time) {
+  const m = P.cm;
+  const view = { vx: P.vx, vz: P.vz, yaw: m?.name === 'whirl' ? m.spin : P.yaw, phase: P.phase, grounded: P.grounded || !!P.wall,
+    state: m ? 'act' : 'idle', move: m?.name || 'combo', t: 0, hits: 0, hurtT: P.hurtT - .2, enraged: P.style >= 100 };
+  if (m) {
+    view.t = m.t; view.hits = m.slammed ? 1 : 0;
+    if (m.name === 'combo') view.t = m.n * .25 + clamp(m.t / MY_TIMES.combo, 0, 1) * .2;
+  }
+  if (!m && !P.grounded) view.enraged = view.enraged || false;
+  drawKnight(view, time, P.x, P.y, P.z, FIRE);
+  if (m?.name === 'whirl') for (let i = 0; i < 16; i++) {
+    const a = m.spin + (i % 2) * Math.PI - (i >> 1) * .2;
+    push(P.x + Math.sin(a) * 4.4, P.y + 2, P.z + Math.cos(a) * 4.4, 3, .9, .18 * (1 - i / 18), .1, a, EMBER);
+  }
+  if (m?.name === 'combo' && m.t < .14) for (let i = 0; i < 10; i++) {
+    const a = P.yaw + (i / 9 - .5) * 2.2 * (m.n === 1 ? -1 : 1);
+    push(P.x + Math.sin(a) * 3.4, P.y + 1.9 + (m.n === 2 ? (i / 9 - .5) * -2.4 : 0), P.z + Math.cos(a) * 3.4, 3, .7, .12, .1, a, i % 2 ? EMBER : CORE);
+  }
+}
+
 function drawEnemyEffects(time) {
   for (const w of waves) for (const roll of [.75, -.75]) {          // a burning X in flight
-    const pitch = -Math.asin(clamp(w.v[1] / 58, -1, 1));
+    const pitch = -Math.asin(clamp(w.v[1] / 62, -1, 1));
     push(...w.p, 3, 4.6, .24, .35, w.yaw, EMBER, pitch, roll);
     push(...w.p, 3, 3.6, .1, .45, w.yaw, CORE, pitch, roll);
+  }
+  for (const d of rain) {                                            // falling blades and their marks
+    const col = d.mine || who !== 'cinder' ? EMBER : FROST.EMBER;
+    for (let i = 0; i < 8; i++) { const a = i / 8 * 6.283 + time * 4; push(d.x + Math.sin(a) * 3.4, d.floor + .12, d.z + Math.cos(a) * 3.4, 3, 1.1, .1, .22, a, col); }
+    if (d.delay <= 0) { push(d.x, d.y + 2, d.z, 3, .34, 4.5, .12, 0, col); push(d.x, d.y + 4.6, d.z, 0, 1, .2, .3, 0, FIRE.ASH); }
   }
   if (E.dead) return;
   const marked = E.move === 'leap' && (E.state === 'wind' || E.state === 'act' && !E.hits);
@@ -1340,6 +1654,172 @@ function drawEnemyEffects(time) {
   if (E.move === 'whirl' && E.state === 'act') for (let i = 0; i < 16; i++) {
     const a = E.yaw + (i % 2) * Math.PI - (i >> 1) * .2;
     push(E.x + Math.sin(a) * 3.8, E.y + 2, E.z + Math.cos(a) * 3.8, 3, .8, .16 * (1 - i / 18), .1, a, EMBER);
+  }
+}
+
+// ───────────────────────── street life: traffic and civilians ─────────────────────────
+const CITY = HALF * BLOCK;
+const CAR_COLORS = [[.75,.1,.08],[.1,.3,.7],[.85,.85,.82],[.09,.09,.1],[.9,.65,.05],[.15,.45,.3],[.5,.52,.56]];
+const SHIRTS = [[.8,.25,.2],[.2,.45,.8],[.9,.8,.3],[.3,.65,.4],[.75,.75,.78],[.55,.3,.65],[.9,.5,.2],[.15,.17,.22]];
+const SKINS = [[.85,.65,.5],[.65,.45,.32],[.4,.27,.19],[.93,.75,.6]];
+let cars = [], civs = [], lights = 0;
+const pick = a => a[Math.random() * a.length | 0];
+
+function initLife() {
+  cars = []; civs = []; lights = 0;
+  for (let k = -5; k <= 5; k++) for (const axis of [0, 1]) for (const dir of [1, -1])
+    for (let n = 0; n < 3; n++) cars.push({ axis, dir, line: k * BLOCK, s: -CITY + (n + rr(.1, .9)) * (CITY * 2 / 3), v: 0, color: pick(CAR_COLORS),
+      wreck: 0, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0, pitch: 0, roll: 0, spin: 0 });
+  for (const c of cars) placeCar(c);
+  for (let i = 0; i < 320; i++) {                            // crowds are thickest near the middle
+    const line = Math.round(rr(-3.4, 3.4)) * BLOCK + (Math.random() < .5 ? -8 : 8), axis = i & 1, at = rr(-170, 170);
+    civs.push({ axis, line, x: axis ? line : at, z: axis ? at : line, y: 0, dir: Math.random() < .5 ? 1 : -1, pace: rr(1.6, 3),
+      panic: 0, down: 0, vx: 0, vz: 0, yaw: 0, step: rr(0, 6), shirt: pick(SHIRTS), skin: pick(SKINS) });
+  }
+}
+function placeCar(c) {                                       // right-hand lanes, 3.5 m off the road's centre
+  if (c.axis) { c.x = c.line - c.dir * 3.5; c.z = c.s; c.yaw = c.dir > 0 ? 0 : Math.PI; }
+  else { c.z = c.line + c.dir * 3.5; c.x = c.s; c.yaw = c.dir > 0 ? Math.PI / 2 : -Math.PI / 2; }
+  c.y = 0;
+}
+function wreckCar(c, x, z, force) {
+  if (c.wreck > 0) { c.vy = Math.max(c.vy, force * .5); return; }
+  const dx = c.x - x, dz = c.z - z, d = Math.hypot(dx, dz) || 1;
+  c.wreck = 14;
+  c.vx = dx / d * force + rr(-4, 4); c.vz = dz / d * force + rr(-4, 4); c.vy = force * rr(.5, .9); c.spin = rr(-7, 7);
+  for (let i = 0; i < 14; i++) debris(c.x, 1, c.z, rr(.15, .45), i % 2 ? [1, .55, .1] : c.color, rr(-12, 12), rr(3, 18), rr(-12, 12), rr(.5, 1.6));
+  sfx(.7, 500, .4);
+}
+// anything violent nearby wrecks cars and sends people running
+function disturb(x, y, z, r) {
+  for (const c of cars) if (Math.hypot(c.x - x, c.y + 1 - y, c.z - z) < r + 2) wreckCar(c, x, z, 10 + r * 1.6);
+  if (y - r > 45) return;
+  for (const p of civs) {
+    const dx = p.x - x, dz = p.z - z, d = Math.hypot(dx, dz);
+    if (d > r + 22) continue;
+    if (p.panic <= 0 || d < r + 6) { p.vx = dx / (d || 1); p.vz = dz / (d || 1); }
+    p.panic = 7;
+    if (d < r + 1.5 && y < r + 4 && p.down <= 0) p.down = 1.8;   // knocked over, gets back up
+  }
+}
+
+function updateCars(dt) {
+  lights = (lights + dt) % 14;
+  const green = [lights < 6, lights >= 7 && lights < 13];       // one axis at a time
+  const lanes = new Map();
+  for (const c of cars) {
+    const key = c.axis + ':' + c.line + ':' + c.dir;
+    (lanes.get(key) || lanes.set(key, []).get(key)).push(c);
+  }
+  for (const c of cars) {
+    if (c.wreck > 0) {
+      c.wreck -= dt; c.vy -= 32 * dt;
+      c.x = clamp(c.x + c.vx * dt, -CITY, CITY); c.z = clamp(c.z + c.vz * dt, -CITY, CITY); c.y += c.vy * dt;
+      c.pitch += c.spin * dt * .6; c.roll += c.spin * dt; c.yaw += c.spin * dt * .3;
+      if (c.y <= 0) {
+        c.y = 0; c.vy = c.vy < -8 ? -c.vy * .3 : 0; c.vx *= .8; c.vz *= .8; c.spin *= .5;
+        if (!c.vy) { c.pitch = Math.round(c.pitch / Math.PI) * Math.PI; c.roll = Math.round(c.roll / Math.PI) * Math.PI; c.vx *= .9; c.vz *= .9; }
+      }
+      if (c.wreck <= 0) {                                       // tow it away and send a fresh one in
+        c.s = (c.axis ? P.z : P.x) > 0 ? -CITY + 2 : CITY - 2; c.v = 0; c.pitch = c.roll = 0; c.wreck = 0; placeCar(c);
+      }
+      continue;
+    }
+    let stop = false;
+    for (const o of lanes.get(c.axis + ':' + c.line + ':' + c.dir)) {
+      const gap = (o.s - c.s) * c.dir;
+      if (o !== c && !o.wreck && gap > 0 && gap < 8) { stop = true; break; }
+    }
+    const nextCross = c.dir > 0 ? Math.ceil((c.s + 9) / BLOCK) * BLOCK : Math.floor((c.s - 9) / BLOCK) * BLOCK;
+    const toLine = (nextCross - c.s) * c.dir - 9;
+    if (!green[c.axis] && toLine >= 0 && toLine < 5) stop = true;
+    for (const who of [P, E]) {                                  // brake for fighters in the road
+      if (who === E && E.dead || who.y > 3) continue;
+      const ahead = ((c.axis ? who.z : who.x) - c.s) * c.dir, side = Math.abs((c.axis ? who.x - c.x : who.z - c.z));
+      if (ahead > 0 && ahead < 8 && side < 2) stop = true;
+    }
+    c.v = stop ? Math.max(0, c.v - 45 * dt) : Math.min(13, c.v + 9 * dt);
+    c.s += c.v * c.dir * dt;
+    if (c.s > CITY) c.s -= CITY * 2; else if (c.s < -CITY) c.s += CITY * 2;
+    placeCar(c);
+  }
+}
+
+// cars are solid: stand on the roof, get shoved by the sides, or smash through at speed
+function collideCars() {
+  for (const c of cars) {
+    const along = Math.abs(Math.sin(c.yaw)) > .5, hx = (along ? 2.3 : 1.1) + .45, hz = (along ? 1.1 : 2.3) + .45;
+    const dx = P.x - c.x, dz = P.z - c.z;
+    if (Math.abs(dx) >= hx || Math.abs(dz) >= hz || P.y >= c.y + 1.75 || P.y + P.h <= c.y) continue;
+    if (Math.hypot(P.vx, P.vy, P.vz) > 48) { wreckCar(c, P.x - P.vx, P.z - P.vz, 22); continue; }
+    if (P.py >= c.y + 1.5 && P.vy <= 0) { P.y = c.y + 1.75; P.vy = 0; P.grounded = true; continue; }
+    const ox = hx - Math.abs(dx), oz = hz - Math.abs(dz);
+    if (ox < oz) moveAxis('x', Math.sign(dx || 1) * ox); else moveAxis('z', Math.sign(dz || 1) * oz);
+  }
+}
+
+function updateCivs(dt) {
+  for (const p of civs) {
+    if (Math.abs(p.x - P.x) > 220 || Math.abs(p.z - P.z) > 220) continue;     // far away: frozen
+    if (!E.dead && E.awake && p.panic < 2 && Math.hypot(p.x - E.x, p.z - E.z) < 18 && E.y < 12) {
+      const d = Math.hypot(p.x - E.x, p.z - E.z) || 1; p.vx = (p.x - E.x) / d; p.vz = (p.z - E.z) / d; p.panic = 5;
+    }
+    if (p.down > 0) { p.down -= dt; continue; }
+    let mx, mz, pace;
+    if (p.panic > 0) { p.panic -= dt; mx = p.vx; mz = p.vz; pace = 9; }
+    else {                                                       // stroll along the pavement, drifting back to it
+      const off = clamp(p.line - (p.axis ? p.x : p.z), -1, 1);
+      mx = p.axis ? off : p.dir; mz = p.axis ? p.dir : off; pace = p.pace;
+    }
+    const nx = p.x + mx * pace * dt, nz = p.z + mz * pace * dt;
+    if (Math.abs(nx) > CITY - 4 || Math.abs(nz) > CITY - 4 || hit(nx - .3, .1, nz - .3, nx + .3, 1.7, nz + .3)) {
+      p.dir = -p.dir;
+      if (p.panic > 0) { const t = p.vx; p.vx = -p.vz; p.vz = t; }
+      continue;
+    }
+    p.x = nx; p.z = nz; p.step += pace * dt * 2.2;
+    p.yaw = Math.atan2(mx, mz);
+  }
+}
+function updateLife(dt) { updateCars(dt); updateCivs(dt); }
+
+const MAX_LIFE = 4600;
+const lifeData = new Float32Array(MAX_LIFE * 12);
+let lifeCount = 0;
+const GLASS = [.08,.12,.18], TYRE = [.03,.03,.035], LAMP = [1,.93,.7], TAIL = [.9,.08,.05], TROUSERS = [.13,.15,.2];
+function buildLife() {
+  lifeCount = 0;
+  const add = (x, y, z, m, w, h, d, yaw, col, pitch = 0) => { if (lifeCount < MAX_LIFE) inst(lifeData, 12 * lifeCount++, x, y, z, m, w, h, d, yaw, col, pitch); };
+  for (const c of cars) {
+    const far = Math.hypot(c.x - P.x, c.z - P.z);
+    if (far > 260) continue;
+    const sy = Math.sin(c.yaw), cy = Math.cos(c.yaw), cp = Math.cos(c.pitch), flip = Math.cos(c.roll) * cp;
+    const part = (side, up, fwd, w, h, d, col, m = 0) =>
+      add(c.x + side * cy + fwd * sy, c.y + (flip < 0 ? 2 - up : up), c.z - side * sy + fwd * cy, m, w, h, d, c.yaw, col, c.pitch);
+    const paint = c.wreck ? [.09, .075, .065] : c.color;
+    part(0, .8, 0, 2.1, .7, 4.4, paint);
+    part(0, 1.43, -.3, 1.9, .6, 2.2, c.wreck ? paint : GLASS);
+    part(0, 1.76, -.3, 1.95, .1, 2.0, paint);
+    if (far < 110) {
+      part(0, .38, 1.45, 2.3, .72, .8, TYRE); part(0, .38, -1.45, 2.3, .72, .8, TYRE);
+      if (!c.wreck) { part(0, .85, 2.21, 1.7, .2, .06, LAMP, 3); part(0, .85, -2.21, 1.7, .2, .06, TAIL, 3); }
+    }
+  }
+  for (const p of civs) {
+    const far = Math.hypot(p.x - P.x, p.z - P.z);
+    if (far > 150) continue;
+    const sy = Math.sin(p.yaw), cy = Math.cos(p.yaw);
+    const part = (side, up, fwd, w, h, d, col, pitch = 0) => add(p.x + side * cy + fwd * sy, up, p.z - side * sy + fwd * cy, 0, w, h, d, p.yaw, col, pitch);
+    if (p.down > 0) { part(0, .2, 0, .55, .32, 1.1, p.shirt); part(0, .2, .75, .34, .3, .34, p.skin); part(0, .16, -.85, .42, .24, .75, TROUSERS); continue; }
+    const run = p.panic > 0, swing = Math.sin(p.step) * (run ? .9 : .45);
+    if (far < 80) for (const side of [-.13, .13]) {
+      const a = side < 0 ? swing : -swing;
+      part(side, .75 - Math.cos(a) * .37, -Math.sin(a) * .37, .2, .75, .22, TROUSERS, a);
+      const arm = run ? -2.7 + a * .3 : -a * .7;              // arms in the air when fleeing
+      part(side * 2.6, 1.42 - Math.cos(arm) * .3, -Math.sin(arm) * .3, .13, .6, .14, p.shirt, arm);
+    } else part(0, .37, 0, .4, .74, .24, TROUSERS);
+    part(0, 1.12, 0, .52, .74, .3, p.shirt);
+    part(0, 1.66, 0, .32, .34, .32, p.skin);
   }
 }
 
@@ -1454,11 +1934,30 @@ function targetPose(time) {
     if (P.chain.sling) { g.aL = -2.4; g.lL = -1.3; g.kL = 1.9; g.lR = -.9; g.kR = 1.7; g.twist = 0; }
     if (P.chain.zip) { g.aL = 1.2; g.lL = .3; g.lR = .55; g.kL = .4; g.kR = .9; }
   } else if (P.chain) { g.aR = -2.6; g.twist = .35; g.lean = -.1; }
-  if (P.cyclone || P.storm) {
-    const w = Math.sin(clock * 26);
-    g.aR = -1.55; g.eR = 0; g.swR = 1.25; g.wrist = 1.5; g.aL = -1.2; g.eL = -.5; g.swL = -1.1; g.lean = .32 + w * .08; g.roll = .2;
-    g.twist = w * .35; g.crouch = .2; g.lL = -.7; g.kL = .8; g.lR = .45; g.kR = .5; g.tail = 1.35;
-    if (P.storm) { g.lL = -1.3; g.kL = 1.9; g.lR = -.2; g.kR = 1.4; g.aL = -2.7; }
+  if (P.storm) {                                       // floating, limbs flung wide
+    const w = Math.sin(clock * 18) * .12;
+    g.aR = -1.6; g.aL = -1.6; g.eR = g.eL = 0; g.swR = 1.5 + w; g.swL = 1.5 - w; g.wrist = 1.5;
+    g.lean = -.3; g.roll = w; g.twist = 0; g.crouch = 0; g.lL = -.9; g.kL = 1.5; g.lR = .15; g.kR = .7; g.tail = 1.7;
+  }
+  if (P.cross) {
+    const t = P.cross.t, f = (from, to) => ease01((t - from) / (to - from));
+    g.wrist = 1.45; g.eR = g.eL = -.05; g.crouch = .14; g.lL = -.55; g.kL = .7; g.lR = .45; g.kR = .4; g.tail = .9;
+    if (t < CF.a) {
+      const k = f(0, CF.a);
+      g.aR = -1.55; g.swR = lerp(2.0, -.5, k); g.twist = lerp(.95, -.7, k); g.aL = -1.2; g.swL = lerp(.3, 1.8, k); g.lean = .3; g.roll = lerp(-.2, .2, k);
+    } else if (t < CF.b) {
+      const k = f(CF.a, CF.b);
+      g.aL = -1.55; g.swL = lerp(1.9, -.5, k); g.twist = lerp(-.75, .75, k); g.aR = -1.3; g.swR = lerp(-.5, .6, k); g.lean = .3; g.roll = lerp(.2, -.2, k);
+    } else if (t < CF.up) {
+      const k = f(CF.b, CF.up);
+      g.aR = lerp(-1.4, -3.35, k); g.aL = lerp(-1.4, -3.35, k); g.swR = lerp(.6, .25, k); g.swL = lerp(-.4, .25, k);
+      g.twist = 0; g.lean = lerp(.2, -.5, k); g.crouch = lerp(.14, 0, k);
+      if (!P.grounded) { g.lL = -1.1; g.kL = 1.8; g.lR = -.6; g.kR = 1.6; }
+    } else {
+      const k = f(CF.up, CF.hit);
+      g.aR = g.aL = lerp(-3.35, -.35, k); g.swR = g.swL = .1; g.twist = 0; g.lean = lerp(-.5, .95, k);
+      g.crouch = lerp(0, .46, k); g.lL = -1.2; g.kL = lerp(.8, 2.0, k); g.lR = .3; g.kR = lerp(.5, 1.7, k); g.wrist = 1.2;
+    }
   }
   if (P.guill) { g.aR = -3.0; g.eR = -.3; g.aL = -2.7; g.lean = .5; g.twist = .3; g.lL = -.9; g.kL = 1.3; g.lR = .5; g.kR = .8; g.tail = 2.4; }
   if (P.whirl) {
@@ -1474,7 +1973,7 @@ function targetPose(time) {
 function buildCharacter(time, thrownOut) {
   const g = targetPose(time), dt = clamp(time - pose.t, 0, .05);
   pose.t = time;
-  const k = 1 - Math.exp(-(P.act || P.cyclone || P.storm ? 55 : 18) * dt);   // snappy attacks, smooth movement
+  const k = 1 - Math.exp(-(P.act || P.cross || P.storm ? 55 : 18) * dt);   // snappy attacks, smooth movement
   for (const key in g) pose[key] += (g[key] - pose[key]) * k;
   const { lean, drop, crouch, roll } = pose;
   const cr = Math.cos(roll), sr = Math.sin(roll);
@@ -1569,7 +2068,7 @@ function buildCharacter(time, thrownOut) {
   }
 
   if (!thrownOut) {   // in hand, angled out from the body so the blade reads from behind
-    const busy = P.act || P.cyclone || P.storm || P.punch > 0;
+    const busy = P.act || P.cross || P.storm || P.punch > 0;
     const yw = P.yaw + upper + pose.swR + (busy ? 0 : .8);
     butt = drawSickle(hand, yw, pose.aR + pose.eR * .5 + lean + pose.wrist, 1.2, roll);
   }
@@ -1672,8 +2171,10 @@ function buildFallers() {
 function buildDynamic(time) {
   dynCount = 0;
   push(0, -1, 0, 2, HALF * BLOCK * 2 + 60, 2, HALF * BLOCK * 2 + 60, 0, [.2,.21,.23]);
+  if (who === 'cinder') { drawCinderPlayer(time); drawEnemy(time, drawAlpha); drawEnemyEffects(time); return; }
   const c = P.chain, mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
-  const spin = P.storm ? stormTip() : P.cyclone ? cycloneTip() : P.orbit ? P.orbit.p : null;
+  const st = P.storm, cf = P.cross;
+  const spin = st ? spherePoint(st.a, .7, st.r) : cf ? crossTip(1) : P.orbit ? P.orbit.p : null;
   const thrownOut = !!(spin || c || P.lash || P.reel);
   const { hand, grip } = buildCharacter(time, thrownOut);
   if (thrownOut) {
@@ -1695,7 +2196,10 @@ function buildDynamic(time) {
   if (rb) block = mix(rb.from, [P.x, P.y + 3.7, P.z], rb.t);
   else if (w) block = whirlPos();
   else if (P.holding) block = [P.x, P.y + 3.7, P.z];
-  if (P.meteor) {
+  if (st || cf) {
+    const ball = st ? spherePoint(st.a + Math.PI, -.9, st.r) : crossTip(-1);
+    drawLinks(grip, ball, 0, .8, .17); drawBall(ball, P.yaw);
+  } else if (P.meteor) {
     const ball = mix(grip, P.meteor.to, Math.min(1, P.meteor.t / .09));
     if (ball[1] > P.y) ball[1] = P.y - .5;
     drawLinks(grip, ball, 0, .8, .17); drawBall(ball, P.yaw);
@@ -1705,10 +2209,28 @@ function buildDynamic(time) {
     push(block[0], block[1], block[2], 0, 2.6, 2.2, 2.6, w ? w.a : P.yaw, color);
   } else { drawLinks(grip, rest, 0, .13, .035); drawBall(rest, P.yaw); }
   if (P.slashT > 0) drawSlashArc();
-  const ring = P.storm || P.cyclone;
-  if (ring) for (let i = 1; i < 14; i++) {                  // light trail behind the spinning blade
-    const a = ring.a - i * .13;
-    push(P.x + Math.sin(a) * ring.r, P.y + 1.4, P.z + Math.cos(a) * ring.r, 3, ring.r * .13, .13 * (1 - i / 14), .1, a, GLOW);
+  if (cf) for (const side of [1, -1]) for (let i = 1; i < 12; i++) {       // light trails off both ends
+    const t = cf.t - i * .012;
+    if (t < 0) break;
+    const p = crossTip(side, t), q = crossTip(side, t + .012), d = sub(q, p), l = Math.hypot(...d);
+    if (l < .15) continue;
+    push((p[0] + q[0]) / 2, (p[1] + q[1]) / 2, (p[2] + q[2]) / 2, 3, .22 * (1 - i / 12), .22 * (1 - i / 12), l,
+         Math.atan2(d[0], d[2]), GLOW, -Math.asin(clamp(d[1] / l, -1, 1)));
+  }
+  if (st) {                                                    // the sphere itself
+    const fade = clamp((SPHERE_TIME - st.t) / .3, 0, 1), c = sphereCentre(), N = 260;
+    for (let i = 0; i < N; i++) {                              // evenly spread shell, spinning
+      const y = 1 - 2 * (i + .5) / N, ring = Math.sqrt(1 - y * y), a = i * 2.39996 + st.a * .5;
+      const py = c[1] + y * st.r;
+      if (py > 0) push(c[0] + Math.sin(a) * ring * st.r, py, c[2] + Math.cos(a) * ring * st.r, 3,
+                       st.r * .055 * fade, st.r * .012 * fade, st.r * .012 * fade, a + Math.PI / 2, GLOW);
+    }
+    for (const tilt of [0, 1.05, -1.05]) for (let i = 0; i < 48; i++) {       // three blade orbits
+      const a = i / 48 * Math.PI * 2, p = spherePoint(a, tilt, st.r), q = spherePoint(a + .13, tilt, st.r), d = sub(q, p), l = Math.hypot(...d);
+      const lit = .35 + .65 * (((a - st.a * (tilt ? 1.4 : 1)) / 6.2832 % 1 + 1) % 1);
+      if (p[1] > 0) push((p[0] + q[0]) / 2, (p[1] + q[1]) / 2, (p[2] + q[2]) / 2, 3, .45 * lit * fade, .45 * lit * fade, l,
+                         Math.atan2(d[0], d[2]), GLOW, -Math.asin(clamp(d[1] / l, -1, 1)));
+    }
   }
   const wire = P.wire;
   if (wire) {
@@ -1735,8 +2257,8 @@ function updateCamera(dt, time, aspect) {
   cam.low += ((P.h < H ? .85 : 0) - cam.low) * ease(12);
   const strafe = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0);
   cam.roll += ((P.slide ? -.045 : 0) + strafe * .012 - cam.roll) * ease(10);
-  const target = [P.x, P.y + 2.65 - cam.dip - cam.low, P.z];
-  const want = 6 + Math.min(2.5, speed * .045) + (P.chain ? 2.5 : 0);
+  const target = [P.x, P.y + (who === 'cinder' ? 4.3 : 2.65) - cam.dip - cam.low, P.z];
+  const want = (who === 'cinder' ? 10 : 6) + Math.min(2.5, speed * .045) + (P.chain ? 2.5 : 0) + (P.storm ? 22 : P.cross ? 5 : 0);
   let free = want;
   for (let t = .6; t <= want; t += .5)
     if (hitPoint(target[0] - look[0]*t, Math.max(.4, target[1] - look[1]*t), target[2] - look[2]*t, .35)) { free = Math.max(1.5, t - .6); break; }
@@ -1877,9 +2399,9 @@ struct VOut { @builtin(position) pos: vec4f, @location(0) w: vec3f, @location(1)
       if (cr.w > 0.0 && dot(d, d) < cr.z * cr.z * 2.25) {
         let ang = atan2(d.y, d.x);
         let dist = length(d) / cr.z;
-        let crack = step(0.93, abs(sin(ang * 7.0 + sin(dist * 9.0 + cr.x) * 0.8))) * step(dist, 1.5);
+        let crack = step(0.975, abs(sin(ang * 7.0 + sin(dist * 9.0 + cr.x) * 0.15))) * step(dist, 1.1);
         base *= 1.0 - 0.6 * (1.0 - smoothstep(0.4, 1.0, dist));
-        base *= 1.0 - 0.5 * crack;
+        base *= 1.0 - 0.35 * crack;
       }
     }
   } else if (i.mat == 3u) { emit = i.color; }
@@ -1955,6 +2477,7 @@ const uniformBuf = buf(ubo.byteLength, GPUBufferUsage.UNIFORM);
 const staticBuf = buf(staticData.byteLength, GPUBufferUsage.VERTEX);
 const dynBuf = buf(dynData.byteLength, GPUBufferUsage.VERTEX);
 const fallBuf = buf(fallData.byteLength, GPUBufferUsage.VERTEX);
+const lifeBuf = buf(lifeData.byteLength, GPUBufferUsage.VERTEX);
 const partBuf = buf(NDEB * 48, GPUBufferUsage.STORAGE);
 const dtBuf = buf(16, GPUBufferUsage.UNIFORM);
 
@@ -2012,7 +2535,7 @@ function flushDebris() {
 }
 
 function resetWorld() {
-  genCity(); resetPlayer(); fallers = []; resetEnemy(); history = []; popup.t = 0; hitStop = 0; craters.fill(0); thrown.length = 0; debrisQueue.length = 0;
+  genCity(); initLife(); resetPlayer(); fallers = []; resetEnemy(); history = []; popup.t = 0; hitStop = 0; craters.fill(0); thrown.length = 0; debrisQueue.length = 0;
   device.queue.writeBuffer(partBuf, 0, new Float32Array(NDEB * 12));
   debrisLive = 0;
 }
@@ -2028,11 +2551,13 @@ function render(dt, time, alpha = 1) {
   P.x = P.px + (real[0] - P.px) * alpha; P.y = P.py + (real[1] - P.py) * alpha; P.z = P.pz + (real[2] - P.pz) * alpha;
   buildDynamic(time);
   buildFallers();
+  buildLife();
   updateCamera(dt, time, canvas.width / canvas.height);
   [P.x, P.y, P.z] = real;
   flushDebris();
   device.queue.writeBuffer(dynBuf, 0, dynData, 0, dynCount * 12);
   if (fallCount) device.queue.writeBuffer(fallBuf, 0, fallData, 0, fallCount * 12);
+  if (lifeCount) device.queue.writeBuffer(lifeBuf, 0, lifeData, 0, lifeCount * 12);
   device.queue.writeBuffer(uniformBuf, 0, ubo);
   device.queue.writeBuffer(dtBuf, 0, new Float32Array([dt, 0, 0, 0]));
 
@@ -2052,6 +2577,7 @@ function render(dt, time, alpha = 1) {
   pass.setPipeline(boxPipe);
   pass.setVertexBuffer(0, staticBuf); pass.draw(18, staticCount);              // buildings
   if (fallCount) { pass.setVertexBuffer(0, fallBuf); pass.draw(18, fallCount); }
+  if (lifeCount) { pass.setVertexBuffer(0, lifeBuf); pass.draw(18, lifeCount); }
   pass.setVertexBuffer(0, dynBuf);    pass.draw(18, dynCount - 1, 0, 1);      // character, thrown chunks
   if (simulate) { pass.setPipeline(debrisPipe); pass.setBindGroup(1, partBind); pass.draw(18, NDEB); pass.setPipeline(boxPipe); }
   pass.draw(18, 1, 0, 0);                                                     // ground last: mostly hidden
@@ -2062,6 +2588,32 @@ function render(dt, time, alpha = 1) {
 
 // ───────────────────────── events + loop ─────────────────────────
 const locked = () => document.pointerLockElement === canvas;
+const HERO_HELP = $('help').innerHTML;
+const CINDER_HELP = `<b>CINDER</b>   (H hides this)
+<b>MOVE</b>  WASD, mouse, Shift sprint
+Space      jump / double jump / hold to glide
+C          slide;  E  dodge dash
+
+<b>BLADES</b>
+LMB        three-cut combo
+LMB hold   FIRE WHEEL (you can still move)
+RMB        EMBER DASH: cut straight through
+F          COMET CLEAVE onto your aim
+G          CROSS FLARE
+T          PHOENIX RISE (launches)
+Z          FLICKER (behind your rival if near)
+Q          EMBER RAIN (full style bar)
+
+1 / 2 switch fighter   K rematch
+R rebuild city   O quality   P 60 fps cap   B debug`;
+function chooseFighter(name) {
+  if (who === name) return;
+  who = name;
+  const keep = { x: P.x, y: P.y, z: P.z, px: P.x, py: P.y, pz: P.z };
+  resetPlayer(); Object.assign(P, keep); resetEnemy();
+  $('help').innerHTML = who === 'cinder' ? CINDER_HELP : HERO_HELP;
+  say(who === 'cinder' ? 'PLAYING: CINDER  ·  rival: RIME' : 'PLAYING: KUSARIGAMA  ·  rival: CINDER', 2.2);
+}
 canvas.addEventListener('mousedown', e => {
   initAudio();
   if (!locked()) {   // raw input (no OS mouse acceleration) where supported
@@ -2084,7 +2636,9 @@ addEventListener('keydown', e => {
   else if (e.code === 'KeyB') { debug = !debug; if (!debug) timeScale = 1; say(debug ? 'DEBUG ON' : 'DEBUG OFF'); }
   else if (e.code === 'KeyN' && debug) { timeScale = timeScale === 1 ? .3 : timeScale === .3 ? .08 : 1; say('SPEED x' + timeScale); }
   else if (e.code === 'KeyK') { resetEnemy(); const x = P.x + Math.sin(cam.yaw) * 18, z = P.z + Math.cos(cam.yaw) * 18;
-    Object.assign(E, { x, z, y: P.y, px: x, pz: z, py: P.y, awake: true, cd: 1.2 }); say('CINDER', 1.4); }
+    Object.assign(E, { x, z, y: P.y, px: x, pz: z, py: P.y, awake: true, cd: 1.2 }); say(foeName(), 1.4); }
+  else if (e.code === 'Digit1') chooseFighter('hero');
+  else if (e.code === 'Digit2') chooseFighter('cinder');
   else if (e.code === 'KeyO') quality = (quality + 1) % QUALITY.length;
   else if (e.code === 'KeyP') cap60 = !cap60;
   else if (e.code === 'KeyH') $('help').style.display = $('help').style.display === 'none' ? '' : 'none';
@@ -2112,6 +2666,7 @@ function frame(now) {
   fighting = locked();
   while (acc >= STEP) { step(STEP); acc -= STEP; }
   updateCollapse(dt * timeScale);
+  updateLife(dt * timeScale);
   if ((aimT += dt) > .1) {
     aimT = 0;
     const look = lookDir(), ok = raycast(aimOrigin(look), look, RANGE);
@@ -2123,7 +2678,9 @@ function frame(now) {
   $('pop').textContent = popup.t > 0 ? popup.text : '';
   const away = Math.hypot(E.x - P.x, E.z - P.z);
   $('boss').style.display = E.dead ? 'none' : 'block';
-  $('boss').children[0].textContent = 'CINDER' + (E.awake ? '' : ' (waiting)') + '  ·  ' + away.toFixed(0) + ' m';
+  $('boss').style.color = who === 'cinder' ? '#a9dcff' : '#ffb08a';
+  $('boss').children[1].firstChild.style.background = who === 'cinder' ? '#3fa0ff' : '#ff5a1f';
+  $('boss').children[0].textContent = foeName() + (E.awake ? '' : ' (waiting)') + '  ·  ' + away.toFixed(0) + ' m';
   $('boss').children[1].firstChild.style.width = E.hp / E.max * 100 + '%';
   $('hp').firstChild.style.width = Math.max(0, P.hp) + '%';
   $('hurt').style.opacity = Math.max(0, P.hurtT * 2, P.hp < 30 ? .3 : 0);
@@ -2131,7 +2688,7 @@ function frame(now) {
   $('bar').firstChild.style.width = (P.charge * 100) + '%';
   if (statT > .5) {
     const fps = frames / statT;
-    $('stats').textContent = `${fps.toFixed(0)} fps${cap60 ? ' (cap 60)' : ''} · ${canvas.width}×${canvas.height}\nGPU: ${gpuName} · ${QUALITY[quality][0]}\n${(staticCount + dynCount).toLocaleString()} boxes\n`
+    $('stats').textContent = `${fps.toFixed(0)} fps${cap60 ? ' (cap 60)' : ''} · ${canvas.width}×${canvas.height}\nGPU: ${gpuName} · ${QUALITY[quality][0]}\n${(staticCount + dynCount + lifeCount).toLocaleString()} boxes\n`
       + `${Math.hypot(P.vx, P.vy, P.vz).toFixed(0)} m/s · alt ${P.y.toFixed(0)} m\ndash ${'◆'.repeat(P.dashes)}${'◇'.repeat(2 - P.dashes)}`
       + (debug ? `\n\nDEBUG  style full, endless dash + jump\nN: speed x${timeScale}\nanim ${P.act?.name || '-'} · pos ${P.x.toFixed(0)}, ${P.y.toFixed(0)}, ${P.z.toFixed(0)}` : '');
     frames = 0; statT = 0;
@@ -2144,9 +2701,10 @@ requestAnimationFrame(frame);
 window.game = {
   async bench(n = 60) { render(0, 1); await device.queue.onSubmittedWorkDone(); const t = performance.now(); for (let i = 0; i < n; i++) render(0, 1); await device.queue.onSubmittedWorkDone(); return { ms: +((performance.now() - t) / n).toFixed(2), w: canvas.width, h: canvas.height }; },
   P, cam, press, release, step, STEP, carve, updateCollapse, resetWorld, render,
-  setDebug(v) { debug = v; }, E, get waves() { return waves; }, setFighting(v) { fighting = v; }, startMove, damageEnemy,
+  setDebug(v) { debug = v; }, chooseFighter, get rain() { return rain; }, get dyn() { return dynCount; }, E, get waves() { return waves; }, setFighting(v) { fighting = v; }, startMove, damageEnemy,
   get buildings() { return buildings; },
-  sim(seconds) { for (let t = 0; t < seconds; t += STEP) { step(STEP); updateCollapse(STEP); } },
+  sim(seconds) { for (let t = 0; t < seconds; t += STEP) { step(STEP); updateCollapse(STEP); updateLife(STEP); } },
+  updateLife, get cars() { return cars; }, get civs() { return civs; }, get lifeBoxes() { return lifeCount; },
 };
 </script>
 </body>
