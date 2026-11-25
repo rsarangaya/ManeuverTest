@@ -54,6 +54,9 @@
   .row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:7px 0}
   .row button,.row select,.row input{min-width:140px}
   select{font:inherit;color:#e8f0ff;background:#16213a;border:1px solid #6fb7ff44;border-radius:8px;padding:7px}
+  #fatal{display:none;position:fixed;inset:0;z-index:50;background:#0b1020;padding:8vh 6vw;overflow:auto;font-size:15px;line-height:1.6;user-select:text}
+  #fatal h2{color:#ffd25a;margin:0 0 12px}
+  #fatal code{display:block;margin-top:18px;opacity:.7;white-space:pre-wrap;font-size:12px}
   #msg{position:fixed;left:50%;top:62%;transform:translateX(-50%);background:#0b1020dd;padding:12px 22px;border-radius:8px;font-size:15px;text-align:center}
 </style>
 </head>
@@ -71,6 +74,26 @@
 <div id="msg">Click to capture the mouse</div>
 <div id="menu"></div>
 
+<div id="fatal"></div>
+<script>
+// If the game cannot start, say why. A black screen tells nobody anything.
+window.startFailed = function (reason, detail) {
+  var box = document.getElementById('fatal');
+  if (box.style.display === 'block') return;
+  box.innerHTML = '<h2>The game could not start</h2><div></div><p><b>Things to try</b></p><ol>' +
+    '<li>Use the latest Chrome or Edge on a computer (not a phone).</li>' +
+    '<li>In the browser settings, turn on "Use graphics acceleration when available", then restart the browser.</li>' +
+    '<li>Update the browser and graphics drivers.</li>' +
+    '<li>Type chrome://gpu (or edge://gpu) in the address bar and look for the WebGPU line.</li></ol>' +
+    '<p>If none of that helps, send this whole screen to whoever shared the link.</p><code></code>';
+  box.children[1].textContent = reason;
+  box.querySelector('code').textContent = (detail ? detail + '\n' : '') + 'WebGPU available: ' + (!!navigator.gpu) + '\nSecure page: ' + window.isSecureContext + '\nBrowser: ' + navigator.userAgent;
+  box.style.display = 'block';
+};
+addEventListener('error', function (e) { if (!window.started) startFailed('A script error stopped the game.', e.message + (e.lineno ? ' (line ' + e.lineno + ')' : '')); });
+addEventListener('unhandledrejection', function (e) { if (!window.started) startFailed('Starting the graphics failed.', String(e.reason && e.reason.message || e.reason)); });
+setTimeout(function () { if (!window.started) startFailed('The game is still not running after 30 seconds. The graphics driver may be stuck.'); }, 30000);
+</script>
 <script type="module">
 'use strict';
 // ───────────────────────── constants ─────────────────────────
@@ -3670,15 +3693,15 @@ struct VOut { @builtin(position) pos: vec4f, @location(0) w: vec3f, @location(1)
 
 // ───────────────────────── GPU setup ─────────────────────────
 const canvas = $('c');
-function fail(text) { $('msg').textContent = text; $('msg').style.display = 'block'; throw new Error(text); }
+function fail(text) { window.startFailed(text); throw new Error(text); }
 if (!navigator.gpu) fail('This browser has no WebGPU. Use a current Chrome or Edge.');
-const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
-if (!adapter) fail('No WebGPU adapter available.');
+const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' }) || await navigator.gpu.requestAdapter();
+if (!adapter) fail('Your browser knows WebGPU but found no graphics chip it can use. Graphics acceleration is probably turned off or blocked.');
 const device = await adapter.requestDevice();
 const ctx = canvas.getContext('webgpu');
 const format = navigator.gpu.getPreferredCanvasFormat();
 ctx.configure({ device, format, alphaMode: 'opaque' });
-device.lost.then(i => { $('msg').textContent = 'GPU device lost: ' + i.message + ' (reload)'; $('msg').style.display = 'block'; });
+device.lost.then(i => { if (i.reason !== 'destroyed') window.startFailed('The graphics device stopped responding. Reload the page.', i.message); });
 
 const buf = (size, usage) => device.createBuffer({ size, usage: usage | GPUBufferUsage.COPY_DST });
 const uniformBuf = buf(ubo.byteLength, GPUBufferUsage.UNIFORM);
@@ -4271,6 +4294,7 @@ resetWorld();
   }
 }
 show('main');
+window.started = true;
 let last = performance.now(), acc = 0, time = 0, frames = 0, statT = 0;
 let due = 0, aimT = 0;
 function frame(now) {
