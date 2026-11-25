@@ -10,12 +10,15 @@
   #help{left:12px;top:12px}
   #stats{right:12px;top:12px;text-align:right}
   #cross{position:fixed;left:50%;top:50%;width:4px;height:4px;margin:-2px;background:#fff;border-radius:2px;opacity:.7}
-  #bar{position:fixed;left:50%;bottom:48px;width:220px;margin-left:-110px;height:8px;border:1px solid #fff6;border-radius:4px;display:none}
+  #bar{position:fixed;left:50%;bottom:54px;width:220px;margin-left:-110px;height:8px;border:1px solid #fff6;border-radius:4px;display:none}
   #bar i{display:block;height:100%;background:#ffb340;width:0}
-  #style{position:fixed;left:50%;bottom:24px;width:300px;margin-left:-150px;height:10px;border:1px solid #8cf8;border-radius:5px}
-  #style i{display:block;height:100%;background:#4bb8ff;width:0;border-radius:5px}
-  #style.full{box-shadow:0 0 14px #6cf}
-  #style.full i{background:#fff}
+  #style{position:fixed;left:50%;bottom:20px;width:360px;margin-left:-180px;height:22px;border:2px solid #8cf9;border-radius:6px;background:#000a;overflow:hidden;pointer-events:none}
+  #style i{display:block;height:100%;background:#2f86d6;width:0}
+  #style span{position:absolute;inset:0;text-align:center;font:700 12px/18px system-ui,sans-serif;letter-spacing:2px;color:#fff;text-shadow:0 1px 3px #000}
+  #style.full{border-color:#ffd25a;animation:ultglow .6s infinite alternate}
+  #style.full i{background:#ffb81f}
+  #style.full span{color:#111;text-shadow:none;font-size:13px}
+  @keyframes ultglow{from{box-shadow:0 0 6px #ffb81f}to{box-shadow:0 0 24px 4px #ffd25a}}
   #pop{position:fixed;left:50%;top:22%;transform:translateX(-50%);font-size:30px;font-weight:800;letter-spacing:3px;color:#bfe6ff;text-shadow:0 0 12px #17a,0 2px 4px #000;pointer-events:none;white-space:nowrap}
   #boss{position:fixed;left:50%;top:10px;width:420px;margin-left:-210px;text-align:center;font-weight:700;letter-spacing:2px;color:#ffb08a;text-shadow:0 1px 3px #000;pointer-events:none}
   #boss>div{height:9px;border:1px solid #f974;border-radius:5px;background:#0008}
@@ -66,7 +69,7 @@
 <div id="help" class="p"></div>
 <div id="stats" class="p"></div>
 <div id="bar"><i></i></div>
-<div id="style"><i></i></div>
+<div id="style"><i></i><span></span></div>
 <div id="pop"></div>
 <div id="boss"><span></span><div><i></i></div></div>
 <div id="hp"><i></i></div>
@@ -300,7 +303,7 @@ const cam = { yaw: .7, pitch: -.05, dist: 10, shake: 0, fov: 70, pos: [0, 5, -10
 const P = {};
 function resetPlayer() {
   Object.assign(P, { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: .7, grounded: true, wall: null,
-    charge: -1, airJumps: 1, dashes: 2, dash: 0, dashDir: [0,0,1], act: null, cm: null, leapCharge: -1, leaping: false, cooled: true, held: null, flying: false, beam: null, swings: 0, hp: 100, iframe: 0, hurtT: 0, style: 0, zipT: 0, atkBuf: 0, hold: 0, cross: null, crossUsed: false, spin: null, chainHits: 0, lastHit: -9, storm: null, meteor: null, guill: null, kick: null, orbit: null, wire: null,
+    charge: -1, airJumps: 1, dashes: 2, dash: 0, dashDir: [0,0,1], act: null, cm: null, leapCharge: -1, leaping: false, rushCd: 0, stunT: 0, cooled: true, held: null, flying: false, beam: null, swings: 0, hp: 100, iframe: 0, hurtT: 0, style: 0, zipT: 0, atkBuf: 0, hold: 0, cross: null, crossUsed: false, spin: null, chainHits: 0, lastHit: -9, storm: null, meteor: null, guill: null, kick: null, orbit: null, wire: null,
     reelBlock: null, whirl: null, carving: null, wasCarving: false, carveY: undefined, slashSide: 1, glide: false, dive: false, apex: 0,
     punch: 0, cool: 0, phase: 0, holding: null, coyote: 0, wallLock: 0, spaceAir: 0,
     h: 2, slide: false, slideCd: 0, mantle: null, jumpBuf: 0, landT: 1, airPress: false, px: 0, py: 0, pz: 0, chain: null, lash: null, reel: null, slashT: 0 });
@@ -437,7 +440,7 @@ function updateChain(dt) {
     const d = Math.hypot(c.a[0] - P.x, c.a[1] - P.y - 1, c.a[2] - P.z);
     // keep the bottom of the arc above the street
     c.target = Math.max(6, Math.min(d * .82, c.a[1] > 20 ? c.a[1] - 15 : c.a[1] - 4)); c.len = d;
-    P.airJumps = 1; P.dashes = 2;
+    P.airJumps = 1; P.dashes = ROSTER[who].dashes || 2;
     if (!c.slack) { P.wall = null; if (P.grounded) { P.vy = 19; P.grounded = false; P.coyote = 0; } }
     dust(...c.a, 8, 5); sfx(.35, 900, .15); cam.shake = Math.max(cam.shake, .15);
   }
@@ -534,7 +537,7 @@ let history = [], popup = { text: '', t: 0 }, hitStop = 0, clock = 0;
 function say(text, t = 1.1) { popup = { text, t }; }
 function style(move, pts = 8) {
   const last = history[history.length - 1];
-  P.style = Math.min(100, P.style + pts * (last && last.move === move ? .5 : 1.7));
+  P.style = Math.min(100, P.style + pts * (last && last.move === move ? .5 : 1.7) * (ROSTER[who].ultRate || 1));
   history.push({ move, at: clock });
   history = history.filter(h => clock - h.at < 6).slice(-8);
   if (NAMES[move]) say(NAMES[move]);
@@ -545,7 +548,7 @@ function style(move, pts = 8) {
       if (m === seq[n]) n--;
     }
     if (n < 0 && seq[seq.length - 1] === (move === 'kick' ? 'dash' : move)) {
-      P.style = Math.min(100, P.style + 30); say(name + '!', 1.6); history = [];
+      P.style = Math.min(100, P.style + 30 * (ROSTER[who].ultRate || 1)); say(name + '!', 1.6); history = [];
     }
   }
 }
@@ -776,10 +779,25 @@ function fallerPoint(f, q) {          // where a block of a tipping tower is now
   const out = f.hinge + (u * c + h * sn) * f.sign, y = f.y + h * c - u * sn;
   return f.alongX ? [out, y, q.z] : [q.x, y, out];
 }
+const TOPPLE_DAMAGE = 260;
+// one heavy hit per falling tower, if any part of it is on top of the rival
+function crush(f, reach) {
+  if (f.crushed || E.dead) return;
+  const under = f.parts.some(q => { const p = fallerPoint(f, q); return Math.abs(p[1] - E.y - 1.5) < reach + 1 && Math.hypot(p[0] - E.x, p[2] - E.z) < reach + pad(foe); });
+  if (!under) return;
+  f.crushed = true;
+  if (pvp) netSend({ t: 'crush', x: P.x, z: P.z });
+  else {
+    E.guard = 0; E.poked = 0; E.inv = 0; damageEnemy(TOPPLE_DAMAGE);
+    if (!E.dead) { E.vy = -10; E.stun = 1.2; E.vx *= .2; E.vz *= .2; }
+  }
+  say('CRUSHED!', 1.4); cam.shake = 1.8; sfx(1, 200, 1.2);
+}
 function stepFallers(dt) {
   for (let n = fallers.length - 1; n >= 0; n--) {
     const f = fallers[n];
     f.w += dt * (.25 + 1.5 * Math.sin(f.a)); f.a += f.w * dt;
+    if (f.a > .5) crush(f, 4.5);                             // under the falling mass
     rumble = .1;
     let landed = f.a > 2;
     if ((f.check -= dt) <= 0) {
@@ -787,13 +805,13 @@ function stepFallers(dt) {
       let smashes = 0;
       for (let i = 0; i < f.parts.length; i += 23) {
         const p = fallerPoint(f, f.parts[i]);
-        if (Math.hypot(p[0] - E.x, p[1] - E.y - 1, p[2] - E.z) < 5) damageEnemy(90);
         if (p[1] < 1.5 && f.a > 1) landed = true;
         const other = smashes < 4 && p[1] > 1 && buildingAt(p);
         if (other && other !== f.own && carve(...p, 4, 14)) smashes++;
       }
     }
     if (!landed) continue;
+    crush(f, 8);                                             // caught in the impact
     for (let i = 0; i < f.parts.length; i++) {
       const p = fallerPoint(f, f.parts[i]);
       if (i % 3 === 0) debris(p[0], Math.max(1, p[1]), p[2], rr(1.2, 2.8), f.color, rr(-9, 9), rr(2, 16), rr(-9, 9), rr(2.5, 5));
@@ -807,10 +825,10 @@ function stepFallers(dt) {
 // timers and held moves that do not take over movement
 function updateMoves(dt) {
   clock += dt;
-  if (debug) { P.style = 100; P.dashes = 2; P.airJumps = 1; }
+  if (debug) { P.style = 100; P.dashes = ROSTER[who].dashes || 2; P.airJumps = 1; }
   if (P.act && (P.act.t += dt) >= P.act.dur) P.act = null;
   P.zipT -= dt; popup.t -= dt;
-  if (P.style < 100) P.style = Math.max(0, P.style - dt * (P.grounded && Math.hypot(P.vx, P.vz) < 10 ? 1.5 : .25));
+  if (P.style < 100) P.style = Math.max(0, P.style - dt * (P.grounded && Math.hypot(P.vx, P.vz) < 10 ? 1.5 : .25) * (ROSTER[who].ultRate ? .3 : 1));
 
   updateCross(dt);
   updateSpin(dt);
@@ -832,7 +850,7 @@ function updateMoves(dt) {
       const t = clamp(dot(p, d) / (dot(d, d) || 1), 0, 1);
       if (Math.hypot(p[0] - d[0] * t, p[1] - d[1] * t, p[2] - d[2] * t) < 2.4) {
         P.vx = Math.sin(cam.yaw) * 55; P.vz = Math.cos(cam.yaw) * 55; P.vy = 38; P.grounded = false; P.coyote = 0;
-        P.airJumps = 1; P.dashes = 2; wire.cool = 1.2; jolt(.5); style('slingshot', 16); sfx(.7, 1500, .3);
+        P.airJumps = 1; P.dashes = ROSTER[who].dashes || 2; wire.cool = 1.2; jolt(.5); style('slingshot', 16); sfx(.7, 1500, .3);
       }
     }
   }
@@ -905,7 +923,7 @@ function specialMove(dt, wx, wz, crouchKey) {
       const r = raycast([P.x, P.y + 1.2, P.z], u, l);
       if (r) { o.p = r.p; if (carve(r.p[0] + u[0], r.p[1], r.p[2] + u[2], 2.8, -12)) { cam.shake = Math.max(cam.shake, .3); sfx(.4, 1300, .1); } }
     }
-    if (!keys.has('KeyX')) { P.orbit = null; P.vy += 12; P.airJumps = 1; P.dashes = 2; }
+    if (!keys.has('KeyX')) { P.orbit = null; P.vy += 12; P.airJumps = 1; P.dashes = ROSTER[who].dashes || 2; }
     return true;
   }
   const c = P.chain;
@@ -919,7 +937,7 @@ function specialMove(dt, wx, wz, crouchKey) {
   if (c?.sling) {
     const d = [c.a[0] - P.x, c.a[1] - P.y - 1, c.a[2] - P.z], l = Math.hypot(...d) || 1, v = 48 + c.sling * 52;
     P.vx = d[0] / l * v; P.vy = d[1] / l * v + 8; P.vz = d[2] / l * v;
-    dropChain(false); P.airJumps = 1; P.dashes = 2; jolt(.5); style('slingshot', 16); sfx(.7, 1600, .3);
+    dropChain(false); P.airJumps = 1; P.dashes = ROSTER[who].dashes || 2; jolt(.5); style('slingshot', 16); sfx(.7, 1600, .3);
     return false;
   }
   if (crouchKey && !c && !P.grounded && !P.wall && P.vy < 0) { // wall carve: sickle drags as a brake
@@ -1032,7 +1050,7 @@ function cinderMove(dt) {
     const d = m.d;
     P.vx = d[0] * 78; P.vy = d[1] * 78; P.vz = d[2] * 78;
     cut(2.5, 1.2 + d[1] * 2, 3.5, 22);
-    if (!m.hit && bite(5, 28)) { m.hit = true; P.dashes = 2; }
+    if (!m.hit && bite(5, 28)) { m.hit = true; P.dashes = ROSTER[who].dashes || 2; }
     if (m.t > .28) { P.vx *= .3; P.vy *= .2; P.vz *= .3; done(); }
     return true;
   }
@@ -1078,9 +1096,9 @@ function titanLand(speed) {
 }
 function titanLeap(charge) {
   const k = clamp((charge - .16) / .8, 0, 1), flat = [Math.sin(cam.yaw), Math.cos(cam.yaw)];
-  const forward = (24 + 52 * k) * (1 - clamp(cam.pitch, 0, 1.2) * .55);   // aim high to go up, level to go far
+  const forward = (16 + 30 * k) * (1 - clamp(cam.pitch, 0, 1.2) * .55);   // aim high to go up, level to go far
   P.vx = flat[0] * forward; P.vz = flat[1] * forward;
-  P.vy = 32 + 34 * k + clamp(cam.pitch, 0, 1.2) * 16 * k;
+  P.vy = 26 + 22 * k + clamp(cam.pitch, 0, 1.2) * 10 * k;
   P.grounded = false; P.coyote = 0; P.leaping = true; P.yaw = cam.yaw;
   byEnemy = true; if (P.y > 1) carve(P.x, P.y - 1.5, P.z, 3.5, 12); byEnemy = false;
   if (P.y < 1.5) addCrater(P.x, P.z, 3 + k * 5);
@@ -1220,6 +1238,14 @@ function drawRubble(dt) {
   }
 }
 
+const RUSH_COOLDOWN = 7, RUSH_STUN = .8, STAMPEDE_MAX = 1.2;
+// leave the rival standing there, unable to act, for a moment
+function daze() {
+  if (E.dead) return;
+  if (pvp) netSend({ t: 'stun', d: RUSH_STUN });
+  E.dazed = RUSH_STUN; E.vx = E.vz = 0; E.vy = Math.min(E.vy, 0); E.stun = 0; E.state = 'idle';
+  say('STUNNED', .7);
+}
 function bruteActions(look) {
   // Titan Leap: hold jump on the ground, release to go
   if (pressed.has('Space') && (P.grounded || P.coyote > 0) && !P.wall && (!P.cm || P.cm.name === 'land')) { P.leapCharge = 0; P.cm = null; P.jumpBuf = 0; }
@@ -1248,7 +1274,8 @@ function bruteActions(look) {
     startCm('combo', { n: P.swings, aim: aimYaw(11) }); style('slash', 5); sfx(.4, 900, .1);
   }
   if (P.hold > .22 && !P.crossUsed && (!m || m.name === 'combo')) { P.crossUsed = true; startCm('charge', { power: 0 }); say('TITAN PUNCH', .8); }
-  if (pressed.has('mouse2') && free && P.dashes > 0) { P.dashes--; startCm('dash', { d: [look[0], Math.max(P.grounded ? 0 : -1, look[1]), look[2]] }); style('dash', 8); sfx(.7, 600, .4); }
+  if (pressed.has('mouse2') && free && P.rushCd > 0) say('RUSH READY IN ' + Math.ceil(P.rushCd) + 's', .7);
+  if (pressed.has('mouse2') && free && P.dashes > 0 && P.rushCd <= 0) { P.dashes--; P.rushCd = RUSH_COOLDOWN; startCm('dash', { d: [look[0], Math.max(P.grounded ? 0 : -1, look[1]), look[2]] }); style('dash', 8); sfx(.7, 600, .4); }
   if (pressed.has('KeyE') && P.dashes > 0 && !P.dash) {
     P.cm = null; P.dashes--; P.dash = .16; P.wall = null; P.yaw = cam.yaw;
     const y = P.grounded ? Math.max(0, look[1]) : look[1], l = Math.hypot(look[0], y, look[2]);
@@ -1314,12 +1341,11 @@ function bruteMove(dt) {
       const d = m.d;
       P.vx = d[0] * 88; P.vy = d[1] * 88; P.vz = d[2] * 88; P.yaw = Math.atan2(d[0], d[2]);
       smash(P.x + d[0] * 3, P.y + 2.4 + d[1] * 3, P.z + d[2] * 3, 4.6, 34);
-      if (!m.hit && bite(6.5, 38)) {
+      if (!m.hit && bite(6.5, 3)) {
         m.hit = true;
-        if (!E.dead && keys.has('mouse2')) { m.stampede = m.carry = true; m.tick = m.grind = 0; P.yaw = Math.atan2(d[0], d[2]); say('STAMPEDE', .9); }
-        else if (!E.dead) { E.vx = d[0] * 50; E.vz = d[2] * 50; E.vy = 18; E.stun = .6; }
+        if (!E.dead && keys.has('mouse2')) { m.stampede = m.carry = true; m.tick = 0; m.t = .34; P.yaw = Math.atan2(d[0], d[2]); say('STAMPEDE', .9); }
       }
-      if (m.t > .34) { P.vx *= .3; P.vy *= .2; P.vz *= .3; done(); }
+      if (m.t > .34) { P.vx *= .3; P.vy *= .2; P.vz *= .3; if (m.hit) daze(); done(); }
       return true;
     }
     // steered by the camera, hugging the ground, through whatever is in the way
@@ -1329,17 +1355,15 @@ function bruteMove(dt) {
     P.vx = fx * 66; P.vz = fz * 66; P.vy = Math.max(P.vy - 38 * dt, -60);
     smash(P.x + fx * 3, P.y + 3, P.z + fz * 3, 4.4, 34);
     if ((m.tick -= dt) <= 0) { m.tick = .09; dust(P.x - fx, P.y, P.z - fz, 8, 9); cam.shake = Math.max(cam.shake, .45); sfx(.4, 300, .12); }
-    if (!m.carry && enemyNear(7)) { m.carry = true; m.grind = 0; E.inv = 0; damageEnemy(20); jolt(.7, .08); }
+    if (!m.carry && enemyNear(7)) { m.carry = true; E.inv = 0; damageEnemy(3); jolt(.5, .05); }
     if (m.carry && !E.dead) {                                  // pinned to the shoulder
       Object.assign(E, { x: P.x + fx * 4.2, y: P.y + .6, z: P.z + fz * 4.2, vx: 0, vy: 0, vz: 0, state: 'idle', cd: .6 });
-      if ((m.grind += dt) > .3) { m.grind = 0; E.inv = 0; damageEnemy(8); }
     }
-    if (!keys.has('mouse2') || m.t > 2.6) {                   // finish: shoulder slam
-      smash(P.x + fx * 5, P.y + 2, P.z + fz * 5, 7, 44);
-      if (m.carry && !E.dead) { E.inv = 0; damageEnemy(45); E.vx = fx * 65; E.vz = fz * 65; E.vy = 24; E.stun = .8; }
-      else bite(8, 30);
-      dust(P.x + fx * 5, P.y, P.z + fz * 5, 50, 24); jolt(1.3, .11); sfx(1, 260, .8);
-      P.vx = fx * 14; P.vz = fz * 14; style('kick', 16); done();
+    if (!keys.has('mouse2') || m.t > .34 + STAMPEDE_MAX) {    // finish: a shove and a short stun
+      smash(P.x + fx * 5, P.y + 2, P.z + fz * 5, 5, 30);
+      if (m.carry && !E.dead) { E.inv = 0; damageEnemy(4); E.x = P.x + fx * 4.5; E.z = P.z + fz * 4.5; E.y = P.y; daze(); }
+      dust(P.x + fx * 5, P.y, P.z + fz * 5, 30, 18); jolt(.8, .07); sfx(1, 260, .6);
+      P.vx = fx * 10; P.vz = fz * 10; style('kick', 12); done();
     }
     return true;
   }
@@ -1801,6 +1825,11 @@ function stepMantle(dt) {
 }
 
 function stepPlayer(dt) {
+  if (P.stunT > 0) {                                        // stunned by the other player
+    P.stunT -= dt; P.vx = P.vz = 0; P.cm = P.cross = P.chain = P.act = P.spin = null;
+    if (!moveAxis('y', -14 * dt)) P.grounded = false;
+    pressed.clear(); released.clear(); return;
+  }
   if (pvp?.pin) {
     const p = pvp.pin;
     Object.assign(P, { x: p.x, y: p.y, z: p.z, vx: 0, vy: 0, vz: 0, grounded: false, cm: null, act: null, chain: null, cross: null, spin: null, held: null, wall: null });
@@ -1815,10 +1844,10 @@ function stepPlayer(dt) {
   const sprint = keys.has('ShiftLeft') || keys.has('ShiftRight');
   const space = keys.has('Space'), crouchKey = keys.has('KeyC');
 
-  P.cool -= dt; P.slashT -= dt; P.punch -= dt; P.wallLock -= dt; P.coyote -= dt; P.slideCd -= dt; P.jumpBuf -= dt;
+  P.cool -= dt; P.rushCd -= dt; P.slashT -= dt; P.punch -= dt; P.wallLock -= dt; P.coyote -= dt; P.slideCd -= dt; P.jumpBuf -= dt;
   if (pressed.has('Space')) P.jumpBuf = .13;               // pressed slightly early still counts
   if (P.mantle) { stepMantle(dt); pressed.clear(); released.clear(); return; }
-  if (P.grounded) { P.coyote = .12; P.airJumps = 1; P.dashes = 2; P.glide = false; P.airPress = false; P.landT += dt; }
+  if (P.grounded) { P.coyote = .12; P.airJumps = 1; P.dashes = ROSTER[who].dashes || 2; P.glide = false; P.airPress = false; P.landT += dt; }
   actions();
   updateChain(dt);
   updateLash(dt);
@@ -1960,7 +1989,7 @@ function stepPlayer(dt) {
     const into = -(wx * nx + wz * nz);
     if (into > .35 && tryMantle(nx, nz, Math.max(speedIn, sprint ? 20 : 12))) { dropChain(false); pressed.clear(); released.clear(); return; }
     if (!P.wall && sprint && into > .35 && P.wallLock <= 0 && !blockedAt(P.x, P.y + .6, P.z)) {
-      dropChain(false); P.wall = wallN; P.airJumps = 1; P.dashes = 2; P.charge = -1; P.glide = false; P.slide = false;
+      dropChain(false); P.wall = wallN; P.airJumps = 1; P.dashes = ROSTER[who].dashes || 2; P.charge = -1; P.glide = false; P.slide = false;
     }
   }
   if (!P.wall && !ploughed) { if (hitX) P.vx = 0; if (hitZ) P.vz = 0; }
@@ -2019,16 +2048,16 @@ const ROSTER = {
     moves: [['mouse0', 'Sickle combo', 'Three cuts or throws, and the fourth click is a spinning Cyclone'], ['mouse0', 'Crossfall (hold)', 'Swipe, swipe, then an overhead slam'],
       ['mouse2', 'Chain (hold)', 'Hooks what you aim at: swing from anything overhead'],
       ['KeyR', 'Reel in', 'While hooked: go to the ground or a car or wall; people are dragged to you'], ['KeyF', 'Ground pound / Meteor Drop', 'In the air, hurls the ball down and follows it'],
-      ['KeyG', 'Reel-In / Wrecking Ball', 'Yank out a block, then hold to whirl and throw'], ['KeyT', 'Topple', 'Pull over a tower with a damaged base'],
+      ['KeyG', 'Reel-In / Wrecking Ball', 'Yank out a block, then hold to whirl and throw'], ['KeyT', 'Topple', 'Pull over a tower with a damaged base. Huge damage if it lands on the rival'],
       ['KeyZ', 'Tripwire', 'Set two ends, press again to rip them out'], ['KeyX', 'Orbit (hold)', 'Circle a tower, slicing it'], ['KeyQ', 'Reaper Sphere', 'Ultimate: a full sphere of blades']] },
   cinder: { name: 'FIREBOI', role: 'Twin-blade ember knight', stats: [4, 4, 3, 3], speed: 1.1, jump: 1, armor: .9, power: 1.55, hp: 1240, size: 1, deal: 1.15, camH: 4.3, camD: 10, tempo: 1.05,
     desc: 'A horned knight in charred plate with a molten blade in each hand. Relentless in close, with fire waves for anyone who tries to keep their distance.',
     moves: [['mouse0', 'Twin Fangs', 'Three-cut combo'], ['mouse0', 'Fire Wheel (hold)', 'Spinning blades; you can still move'], ['mouse2', 'Ember Dash', 'Cut straight through anything'],
       ['KeyF', 'Comet Cleave', 'Leap and crash down on your aim'], ['KeyG', 'Cross Flare', 'A burning X that slices buildings'], ['KeyT', 'Phoenix Rise', 'Uppercut that launches'],
       ['KeyZ', 'Flicker', 'Blink, behind your rival if near'], ['KeyQ', 'Ember Rain', 'Ultimate: blades fall from the sky']] },
-  brute: { name: 'TANKBOI', role: 'Colossal brawler', stats: [5, 2, 2, 5], speed: .95, jump: 1.25, armor: .62, power: 1.8, hp: 1500, size: 1.9, deal: 1.35, cool: .6, camH: 4.8, camD: 11, tempo: .75,
+  brute: { name: 'TANKBOI', role: 'Colossal brawler', stats: [4, 1, 2, 3], speed: .8, jump: 1, dashes: 1, ultRate: .55, armor: 1.24, power: 1.44, hp: 750, netHp: 1500, size: 1.9, deal: 1.08, cool: .6, camH: 4.8, camD: 11, tempo: .75,
     desc: 'A mountain of muscle in iron gauntlets. Slower than the rest and a far bigger target, but soaks up punishment, resists being knocked around and hits harder than anyone.',
-    moves: [['mouse0', 'Hammer Fists', 'Very fast alternating left and right'], ['mouse0', 'Titan Punch (hold)', 'Charge, release; longer hits harder'], ['mouse2', 'Bull Rush / Stampede (hold)', 'Keep holding to plough on, carry the rival and slam them'],
+    moves: [['mouse0', 'Hammer Fists', 'Very fast alternating left and right'], ['mouse0', 'Titan Punch (hold)', 'Charge, release; longer hits harder'], ['mouse2', 'Bull Rush / Stampede (hold)', 'Barely hurts, but leaves them stunned. Hold to carry them a short way. 7 s cooldown'],
       ['Space', 'Titan Leap (hold)', 'Tap to hop; charge and release to soar. The landing cracks the ground'],
       ['KeyF', 'Landslide', 'Rip up the street and send a rolling wall of rubble'], ['KeyG', 'Grab / Throw', 'Seize the rival, a car, a bystander or rubble; press again or attack to throw'], ['KeyT', 'Thunderclap', 'A ranged shockwave that grows as it flies'],
       ['KeyZ', 'Titan Kick (hold)', 'Charge and release: a front kick that launches'],
@@ -2062,7 +2091,7 @@ function resetEnemy() {
   E.max = ROSTER[foe].hp;
   Object.assign(E, { x: HOME[0], y: HOME[1], z: HOME[2], px: HOME[0], py: HOME[1], pz: HOME[2], vx: 0, vy: 0, vz: 0, yaw: Math.PI,
     hp: E.max, awake: false, dead: false, state: 'idle', t: 0, cd: 1, hurtT: 0, inv: 0, hits: 0, target: [0, 0, 0], dir: [0, 0, 1],
-    enraged: false, stun: 0, stunned: false, stunFor: 0, poise: 0, flung: false, grounded: true, last: '', phase: 0, carveT: 0, poked: 0, pokeT: 0, guard: 0, dodged: false });
+    enraged: false, dazed: 0, stun: 0, stunned: false, stunFor: 0, poise: 0, flung: false, grounded: true, last: '', phase: 0, carveT: 0, poked: 0, pokeT: 0, guard: 0, dodged: false });
   waves = []; rain = []; slides = []; rubble = []; flames = []; E.swing = 0;
 }
 E.max = 900;
@@ -2350,7 +2379,7 @@ function stepEnemy(dt) {
   E.px = E.x; E.py = E.y; E.pz = E.z;
   P.iframe -= dt; P.hurtT -= dt;
   if (!pvp && P.iframe < -4 && P.hp < 100) P.hp = Math.min(100, P.hp + dt * 12);        // recover when left alone
-  E.inv -= dt; E.hurtT -= dt;
+  E.inv -= dt; E.hurtT -= dt; if (pvp) E.dazed -= dt;
   stepShots(dt);
   stepSlides(dt);
   if (pvp) return remoteStep(dt);                           // a person is driving the rival
@@ -2382,6 +2411,8 @@ function stepEnemy(dt) {
       E.flung = false; E.stun = .5; byEnemy = true; carve(E.x, E.y + 1.2, E.z, 5.5, 24); byEnemy = false;
       E.inv = 0; damageEnemy(40); dust(E.x, E.y, E.z, 30, 16); jolt(.9, .06); E.vx *= .2; E.vz *= .2;
     }
+  } else if (E.dazed > 0) {                                  // seeing stars
+    E.dazed -= dt; E.state = 'idle'; E.vx = E.vz = 0;
   } else if (E.state === 'idle') {                          // stalk: run, circle, leap up walls
     faceXZ(P.x, P.z);
     const speed = (E.enraged ? 22 : 16) * (flat > 40 ? 1.8 : 1) * ROSTER[foe].speed;
@@ -2578,8 +2609,14 @@ function drawModel(kind, v, time, mirror) {
   if (kind === 'brute') drawBrute(v, time); else if (kind === 'halo') drawHalo(v, time); else drawHeroAs(v, time);
   tint = false;
 }
+function drawStars(x, y, z, time) {
+  for (let i = 0; i < 5; i++) { const a = time * 7 + i * 1.257; push(x + Math.sin(a) * .9, y, z + Math.cos(a) * .9, 3, .22, .22, .22, a, [1, .9, .25], a); }
+}
 function drawEnemy(time, alpha) {
   if (remoteDrawing) return;
+  const top = { hero: 2.7, cinder: 3.9, brute: 4.7, halo: 3.3 };
+  if (!E.dead && E.dazed > 0) drawStars(E.x, E.y + top[foe], E.z, time);
+  if (P.stunT > 0) drawStars(P.x, P.y + top[who], P.z, time);
   if (pvp) return drawRemote(time);
   if (E.dead) return;
   const v = Object.assign({}, E, { x: E.px + (E.x - E.px) * alpha, y: E.py + (E.y - E.py) * alpha, z: E.pz + (E.z - E.pz) * alpha });
@@ -3952,12 +3989,16 @@ function onNet(m) {
     if (was && !pvp.pin) { P.vy = 14; P.iframe = Math.max(P.iframe, .3); }
   } else if (m.t === 'hit') {
     // the attacker's strength against my toughness, as a share of my health bar
-    const loss = num(m.d, 0, 220) * ROSTER[who].armor * 400 / ROSTER[who].hp;
+    const loss = num(m.d, 0, 220) * ROSTER[who].armor * 400 / (ROSTER[who].netHp || ROSTER[who].hp);
     if (pvp.pin) P.iframe = 0;                              // no dodging while they have hold of me
     rawDamage = true;
     if (hurtPlayer(loss, num(m.x, -400, 400), num(m.z, -400, 400), 14) && pvp) P.iframe = Math.min(P.iframe, .22);   // fast combos still land
     rawDamage = false;
-  } else if (m.t === 'knock') {
+  } else if (m.t === 'stun') { P.stunT = num(m.d, 0, 1); say('STUNNED', .7); }
+  else if (m.t === 'crush') {                                // a tower came down on me
+    P.iframe = 0; rawDamage = true; hurtPlayer(35, num(m.x, -400, 400), num(m.z, -400, 400), 24); rawDamage = false;
+  }
+  else if (m.t === 'knock') {
     P.vx = num(m.x, -90, 90); P.vy = num(m.y, -20, 60); P.vz = num(m.z, -90, 90); P.grounded = false; P.flying = false;
   } else if (m.t === 'down') { pvp.mine++; say('YOU WIN THE ROUND  ·  ' + pvp.mine + ' - ' + pvp.theirs, 2.5); pvpSpawn(); }
   else if (m.t === 'slide') landslide(num(m.x, -400, 400), num(m.y, 0, 300), num(m.z, -400, 400), num(m.yaw, -10, 10), false, true);
@@ -4320,6 +4361,7 @@ function frame(now) {
   render(playing || mode === 'menu' ? dt : 0, time, playing ? acc / STEP : 1);
   $('style').firstChild.style.width = P.style + '%';
   $('style').className = P.style >= 100 ? 'full' : '';
+  $('style').lastChild.textContent = P.style >= 100 ? 'ULT READY · PRESS ' + bound('KeyQ').toUpperCase() : 'ULT ' + Math.floor(P.style) + '%';
   $('pop').textContent = popup.t > 0 ? popup.text : '';
   const away = Math.hypot(E.x - P.x, E.z - P.z);
   $('boss').style.display = E.dead ? 'none' : 'block';
@@ -4336,7 +4378,7 @@ function frame(now) {
   if (statT > .5) {
     const fps = frames / statT;
     $('stats').textContent = `${fps.toFixed(0)} fps${cap60 ? ' (cap 60)' : ''} · ${canvas.width}×${canvas.height}\nGPU: ${gpuName} · ${QUALITY[quality][0]}\n${(staticCount + dynCount + lifeCount).toLocaleString()} boxes\n`
-      + `${Math.hypot(P.vx, P.vy, P.vz).toFixed(0)} m/s · alt ${P.y.toFixed(0)} m\ndash ${'◆'.repeat(P.dashes)}${'◇'.repeat(2 - P.dashes)}`
+      + `${Math.hypot(P.vx, P.vy, P.vz).toFixed(0)} m/s · alt ${P.y.toFixed(0)} m\ndash ${'◆'.repeat(P.dashes)}${'◇'.repeat(Math.max(0, (ROSTER[who].dashes || 2) - P.dashes))}` + (who === 'brute' ? `\nrush ${P.rushCd > 0 ? Math.ceil(P.rushCd) + 's' : 'ready'}` : '')
       + (debug ? `\n\nDEBUG  style full, endless dash + jump\nspeed x${timeScale}\nanim ${P.act?.name || '-'} · pos ${P.x.toFixed(0)}, ${P.y.toFixed(0)}, ${P.z.toFixed(0)}` : '');
     frames = 0; statT = 0;
   }
