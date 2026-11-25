@@ -15,3 +15,7 @@ node serve.mjs
 ```
 
 Then open http://localhost:8123.
+
+## Play online
+
+Choose **Multiplayer**, pick a fighter, then one player hosts and shares the room code and the other joins with it. The connection is peer to peer (WebRTC through PeerJS), so turn off VPNs. Players can see each other's IP address, so only play with people you trust.
