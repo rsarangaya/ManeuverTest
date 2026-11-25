@@ -24,39 +24,43 @@
   #hp{position:fixed;left:16px;bottom:22px;width:220px;height:12px;border:1px solid #fff7;border-radius:6px;background:#0008}
   #hp i{background:#5fe39a}
   #hurt{position:fixed;inset:0;pointer-events:none;opacity:0;box-shadow:inset 0 0 140px 40px #d1200f}
+  body.inmenu #help,body.inmenu #stats,body.inmenu #cross,body.inmenu #bar,body.inmenu #style,body.inmenu #pop,body.inmenu #boss,body.inmenu #hp,body.inmenu #hurt,body.inmenu #msg{display:none!important}
+  #menu{position:fixed;inset:0;z-index:5;pointer-events:none;font-size:14px}
+  #menu *{box-sizing:border-box}
+  .pane{position:absolute;pointer-events:auto;background:#0a0f1ee6;border:1px solid #6fb7ff33;border-radius:12px;padding:18px;overflow:auto}
+  .center{left:50%;top:50%;transform:translate(-50%,-50%);width:min(460px,92vw);max-height:92vh}
+  .title{left:6vw;top:50%;transform:translateY(-50%);width:min(340px,88vw);background:none;border:0;overflow:visible}
+  .title h1{font-size:46px;letter-spacing:6px;margin:0 0 4px;text-shadow:0 0 24px #1769c4}
+  .left{left:14px;top:14px;bottom:14px;width:min(300px,30vw)}
+  .right{right:14px;top:14px;bottom:14px;width:min(400px,36vw)}
+  h2{margin:0 0 10px;font-size:19px;letter-spacing:2px}
+  .sub{opacity:.65;margin:0 0 14px}
+  button{font:inherit;color:#e8f0ff;background:#16213a;border:1px solid #6fb7ff44;border-radius:8px;padding:9px 14px;cursor:pointer}
+  button:hover:not(:disabled){background:#22365e;border-color:#8fd0ff}
+  button:disabled{opacity:.4;cursor:default}
+  .wide{display:block;width:100%;margin:8px 0;text-align:left}
+  .go{background:#1769c4;border-color:#9bd6ff;font-weight:700}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-bottom:14px}
+  .card{padding:4px;text-align:center}
+  .card img{width:100%;display:block;border-radius:5px}
+  .card.sel{border-color:#ffd25a;box-shadow:0 0 0 2px #ffd25a}
+  .stat{display:flex;align-items:center;gap:8px;margin:3px 0}
+  .stat span{width:84px;opacity:.7}
+  .stat i{width:22px;height:8px;border-radius:2px;background:#ffffff1f}
+  .stat i.on{background:#4bb8ff}
+  .mv{display:grid;grid-template-columns:96px 1fr;gap:8px;padding:6px 0;border-top:1px solid #ffffff14}
+  .mv b{color:#ffd25a;font-weight:600}
+  .mv small{display:block;opacity:.65}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:7px 0}
+  .row button,.row select,.row input{min-width:140px}
+  select{font:inherit;color:#e8f0ff;background:#16213a;border:1px solid #6fb7ff44;border-radius:8px;padding:7px}
   #msg{position:fixed;left:50%;top:62%;transform:translateX(-50%);background:#0b1020dd;padding:12px 22px;border-radius:8px;font-size:15px;text-align:center}
 </style>
 </head>
-<body>
+<body class="inmenu">
 <canvas id="c"></canvas>
 <div id="cross"></div>
-<div id="help" class="p"><b>SKYBREAK</b>   (H hides this)
-<b>MOVE</b>  WASD, mouse, Shift sprint
-Space      jump / double jump / hold to glide
-C          slide; hold while slow + Space: super jump
-E          air dash
-RMB hold   chain swing      Space: zip
-
-<b>ATTACK</b>
-LMB        slash / throw sickle (tap fast)
-LMB hold   CROSSFALL: swipe, swipe, overhead slam
-F          ground pound; in air: METEOR DROP
-G          REEL-IN a block; G hold+release: WRECKING BALL
-T          TOPPLE a weakened tower
-Z, Z, Z    TRIPWIRE: set, set, rip (run into it to launch)
-X hold     ORBIT a tower
-Q          REAPER SPHERE (full style bar)
-
-<b>CHAIN TRICKS</b>
-LMB on a wall or right after a zip: GUILLOTINE
-C beside a wall while falling:      WALL CARVE
-E at speed while swinging:          PENDULUM KICK
-C while hooked, release:            SLINGSHOT
-
-R rebuild city   O quality   P 60 fps cap
-B debug mode (then N: slow motion; no damage)
-K summon / reset rival       dodge with E
-1 kusarigama   2 play as CINDER</div>
+<div id="help" class="p"></div>
 <div id="stats" class="p"></div>
 <div id="bar"><i></i></div>
 <div id="style"><i></i></div>
@@ -64,7 +68,8 @@ K summon / reset rival       dodge with E
 <div id="boss"><span></span><div><i></i></div></div>
 <div id="hp"><i></i></div>
 <div id="hurt"></div>
-<div id="msg">Click to play</div>
+<div id="msg">Click to capture the mouse</div>
+<div id="menu"></div>
 
 <script type="module">
 'use strict';
@@ -73,7 +78,7 @@ const V = 3;                 // voxel size (m)
 const BLOCK = 48;            // city block pitch (m)
 const HALF = 6;              // city spans [-HALF, HALF) blocks
 const MAX_STATIC = 160000;   // instance capacity for the city
-const MAX_DYN = 2200;
+const MAX_DYN = 2800;
 const NDEB = 2048;           // GPU debris particles
 const STEP = 1 / 120;
 
@@ -271,11 +276,12 @@ const cam = { yaw: .7, pitch: -.05, dist: 10, shake: 0, fov: 70, pos: [0, 5, -10
 const P = {};
 function resetPlayer() {
   Object.assign(P, { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: .7, grounded: true, wall: null,
-    charge: -1, airJumps: 1, dashes: 2, dash: 0, dashDir: [0,0,1], act: null, cm: null, swings: 0, hp: 100, iframe: 0, hurtT: 0, style: 0, zipT: 0, atkBuf: 0, hold: 0, cross: null, crossUsed: false, storm: null, meteor: null, guill: null, kick: null, orbit: null, wire: null,
+    charge: -1, airJumps: 1, dashes: 2, dash: 0, dashDir: [0,0,1], act: null, cm: null, leapCharge: -1, leaping: false, held: null, swings: 0, hp: 100, iframe: 0, hurtT: 0, style: 0, zipT: 0, atkBuf: 0, hold: 0, cross: null, crossUsed: false, storm: null, meteor: null, guill: null, kick: null, orbit: null, wire: null,
     reelBlock: null, whirl: null, carving: null, wasCarving: false, carveY: undefined, slashSide: 1, glide: false, dive: false, apex: 0,
     punch: 0, cool: 0, phase: 0, holding: null, coyote: 0, wallLock: 0, spaceAir: 0,
     h: 2, slide: false, slideCd: 0, mantle: null, jumpBuf: 0, landT: 1, airPress: false, px: 0, py: 0, pz: 0, chain: null, lash: null, reel: null, slashT: 0 });
   cam.dip = 0; cam.roll = 0; cam.low = 0;
+  heroBlank = Object.assign({}, P);
 }
 const W = .45, H = 2, LOW = 1.15;   // standing / sliding height
 const blockedAt = (x, y, z, h = P.h) => hit(x - W, y, z - W, x + W, y + h, z + W);
@@ -318,49 +324,101 @@ function lookDir() {
 const RANGE = 85;
 const aimOrigin = look => cam.pos.map((c, i) => c + look[i] * cam.dist);   // skip what is behind the player
 
-// Aim at something and it is used; aim at open sky and a good swing point ahead is picked.
+// the person or car under the crosshair, if any
+function aimEntity(look) {
+  const o = aimOrigin(look);
+  let best = null;
+  const test = (type, obj, up, radius) => {
+    const d = [obj.x - o[0], (obj.y || 0) + up - o[1], obj.z - o[2]], t = dot(d, look);
+    if (t < 0 || t > RANGE || best && t > best.t) return;
+    if (Math.hypot(d[0] - look[0] * t, d[1] - look[1] * t, d[2] - look[2] * t) < radius) best = { type, o: obj, t, up };
+  };
+  if (!E.dead) test('rival', E, 1.6, 2.4);
+  for (const c of cars) if (!c.held) test('car', c, 1, 2.2);
+  for (const p of civs) if (!p.held && !p.dead) test('civ', p, 1, 1.4);
+  return best;
+}
+const entityPoint = e => [e.o.x, (e.o.y || 0) + e.up, e.o.z];
+
+// Whatever you point at is what gets hooked. A swing point is only chosen for you when aiming at open air.
 function findAnchor() {
   const look = lookDir(), head = [P.x, P.y + 1.8, P.z];
-  const aimed = raycast(aimOrigin(look), look, RANGE);
-  if (aimed && aimed.p[1] > Math.max(2, P.y + 2)) return aimed.p;
+  const aimed = raycast(aimOrigin(look), look, RANGE), ent = aimEntity(look);
+  if (ent && (!aimed || ent.t < aimed.t + 1.5)) return { a: entityPoint(ent), ent };
+  const ground = aimed && aimed.p[1] < .6;
+  // a level look down a street only grazes the road far away; that still picks a swing point
+  if (aimed && (!ground || cam.pitch < -.35 || P.grounded && aimed.t < 50 || aimed.t < 25)) return { a: aimed.p };
   for (const el of [.8, .6, 1.05, .4]) for (const off of [0, -.35, .35, -.7, .7, -1.2, 1.2]) {
     const a = cam.yaw + off, d = [Math.sin(a) * Math.cos(el), Math.sin(el), Math.cos(a) * Math.cos(el)];
     const r = raycast(head, d, RANGE);
-    if (r && r.t > 8 && r.p[1] > P.y + 6) return r.p;
+    if (r && r.t > 8 && r.p[1] > P.y + 6) return { a: r.p };
   }
-  return aimed ? aimed.p : null;
+  return aimed ? { a: aimed.p } : null;
 }
 function fireChain() {
   P.orbit = null;
-  const a = findAnchor();
-  if (!a) { startLash(false); return; }                    // nothing to catch: the blade just snaps out
-  P.chain = { a, t: 0, dur: Math.hypot(a[0] - P.x, a[1] - P.y, a[2] - P.z) / 600 + .01, attached: false, zip: false, len: 0 };
+  const found = findAnchor();
+  if (!found) { startLash(false); return; }                // nothing to catch: the blade just snaps out
+  const { a, ent } = found;
+  P.chain = { a, ent, t: 0, dur: Math.hypot(a[0] - P.x, a[1] - P.y, a[2] - P.z) / 600 + .01, attached: false, zip: false, len: 0,
+    slack: !!ent || a[1] < P.y + 4 };                      // only a hook overhead is something to swing from
   P.lash = P.reel = null; P.dive = false; P.glide = false; P.yaw = cam.yaw;
   sfx(.25, 2600, .15);
 }
 function dropChain(boost) {
   const c = P.chain;
   if (!c) return;
-  if (boost && c.attached && !P.grounded) { P.vy += 10; P.vx *= 1.08; P.vz *= 1.08; }       // little pop on release
+  if (c.pulling && c.ent.type === 'civ') Object.assign(c.ent.o, { held: false, flung: true, lethal: false, vx: 0, vy: 0, vz: 0 });   // set down, they run
+  if (boost && c.attached && !c.slack && !P.grounded) { P.vy += 10; P.vx *= 1.08; P.vz *= 1.08; }       // little pop on release
   P.reel = { from: c.a, t: 0 };
   P.chain = null;
+}
+// light things come to you; anything heavy, you go to it
+function reelIn() {
+  const c = P.chain;
+  if (!c || c.zip || c.pulling) return;
+  const light = c.ent && (c.ent.type === 'civ' || c.ent.type === 'rival' && foe !== 'brute');
+  if (light) {
+    c.pulling = true;
+    if (c.ent.type === 'civ') Object.assign(c.ent.o, { held: true, down: 0, flung: false });
+    else { E.awake = true; E.inv = 0; damageEnemy(6); }
+    say('REELED IN', .7);
+  } else { c.zip = true; style('zip', 8); }
+  sfx(.3, 1700, .25);
+}
+function pullTarget(dt) {
+  const c = P.chain, o = c.ent.o;
+  const to = [P.x + Math.sin(P.yaw) * 2.6, P.y, P.z + Math.cos(P.yaw) * 2.6];
+  const d = [to[0] - o.x, to[1] - (o.y || 0), to[2] - o.z], l = Math.hypot(...d);
+  const k = Math.min(1, 62 * dt / (l || 1));
+  o.x += d[0] * k; o.y = (o.y || 0) + d[1] * k; o.z += d[2] * k;
+  if (c.ent.type === 'rival') Object.assign(E, { px: E.x, py: E.y, pz: E.z, vx: 0, vy: 0, vz: 0, stun: .6, state: 'idle', cd: .7 });
+  else { o.panic = 8; o.yaw = P.yaw; }
+  if (l < 1.5) dropChain(false);
 }
 function updateChain(dt) {
   const c = P.chain;
   if (P.reel && (P.reel.t += dt / .08) >= 1) P.reel = null;
   if (!c) return;
   if (!keys.has('mouse2')) return dropChain(true);
-  if (!hitPoint(...c.a, .6)) return dropChain(false);      // what it was stuck in got destroyed
-  if (c.attached) return;
-  if ((c.t += dt) < c.dur) return;
-  c.attached = true; style('swing', 8);
-  const d = Math.hypot(c.a[0] - P.x, c.a[1] - P.y - 1, c.a[2] - P.z);
-  // keep the bottom of the arc above the street
-  c.len = Math.max(6, Math.min(d * .82, c.a[1] > 20 ? c.a[1] - 15 : c.a[1] - 4));
-  c.target = c.len; c.len = d;
-  P.airJumps = 1; P.dashes = 2; P.wall = null;
-  if (P.grounded) { P.vy = 19; P.grounded = false; P.coyote = 0; }
-  dust(...c.a, 8, 5); sfx(.35, 900, .15); cam.shake = Math.max(cam.shake, .15);
+  if (pressed.has('KeyR')) c.wantReel = true;              // pressed while the blade is still flying counts
+  if (c.ent) {
+    if (c.ent.type === 'rival' && E.dead) return dropChain(false);
+    c.a = entityPoint(c.ent);
+    if (Math.hypot(c.a[0] - P.x, c.a[1] - P.y, c.a[2] - P.z) > RANGE + 25) return dropChain(false);
+  } else if (!hitPoint(...c.a, .6)) return dropChain(false);      // what it was stuck in got destroyed
+  if (!c.attached) {
+    if ((c.t += dt) < c.dur) return;
+    c.attached = true; style('swing', 8);
+    const d = Math.hypot(c.a[0] - P.x, c.a[1] - P.y - 1, c.a[2] - P.z);
+    // keep the bottom of the arc above the street
+    c.target = Math.max(6, Math.min(d * .82, c.a[1] > 20 ? c.a[1] - 15 : c.a[1] - 4)); c.len = d;
+    P.airJumps = 1; P.dashes = 2;
+    if (!c.slack) { P.wall = null; if (P.grounded) { P.vy = 19; P.grounded = false; P.coyote = 0; } }
+    dust(...c.a, 8, 5); sfx(.35, 900, .15); cam.shake = Math.max(cam.shake, .15);
+  }
+  if (c.wantReel) { c.wantReel = false; reelIn(); }
+  if (c.pulling) pullTarget(dt);
 }
 
 function swing(dt, wx, wz) {
@@ -382,10 +440,13 @@ function constrain(dt) {
   const c = P.chain;
   const d = [P.x - c.a[0], P.y + 1 - c.a[1], P.z - c.a[2]], l = Math.hypot(...d) || 1;
   if (c.zip) {
-    if (l < 3.5) { P.zipT = .9; dropChain(false); P.vy = 20; P.vx *= .45; P.vz *= .45; }
+    if (l < 3.5) {                                          // arrive: stop on flat ground, hop up a wall
+      P.zipT = .9; const stop = c.slack; dropChain(false);
+      if (stop) { P.vx *= .12; P.vz *= .12; P.vy = Math.min(0, P.vy * .12); } else { P.vy = 20; P.vx *= .45; P.vz *= .45; }
+    }
     return;
   }
-  if (l <= c.len) return;
+  if (c.slack || l <= c.len) return;
   const n = d.map(v => v / l), out = P.vx * n[0] + P.vy * n[1] + P.vz * n[2];
   if (out > 0) { P.vx -= n[0] * out; P.vy -= n[1] * out; P.vz -= n[2] * out; }
   const pull = Math.min(l - c.len, 60 * dt);
@@ -792,7 +853,7 @@ function specialMove(dt, wx, wz, crouchKey) {
     return true;
   }
   const c = P.chain;
-  if (c?.attached && !c.zip && !P.grounded && crouchKey) { // slingshot: draw back, release C
+  if (c?.attached && !c.zip && !c.slack && !P.grounded && crouchKey) { // slingshot: draw back, release C
     c.sling = Math.min(1, (c.sling || 0) + dt / .6);
     const d = [c.a[0] - P.x, c.a[1] - P.y - 1, c.a[2] - P.z], l = Math.hypot(...d) || 1;
     P.vx = -d[0] / l * 7; P.vy = -d[1] / l * 7; P.vz = -d[2] / l * 7; c.len = c.target = l + 1;
@@ -884,6 +945,7 @@ function cinderActions(look) {
 
 // timers, blade hits and movement for the knight. Returns true when it drives velocity
 function cinderMove(dt) {
+  if (who === 'brute') return bruteMove(dt);
   const m = P.cm;
   if (!m) return false;
   m.t += dt;
@@ -943,8 +1005,257 @@ function cinderMove(dt) {
   return false;
 }
 
+// the landing: crater, shockwave, and anyone close takes it
+function titanLand(speed) {
+  const p = clamp((speed - 25) / 50, P.leaping ? .3 : 0, 1), r = 6 + p * 9;
+  byEnemy = true;
+  carve(P.x, P.y + .5, P.z, r * .8, 30);
+  for (let i = 0; i < 10; i++) { const a = i / 10 * 6.283; carve(P.x + Math.sin(a) * r, P.y + 1, P.z + Math.cos(a) * r, 2.8, 24); }
+  byEnemy = false;
+  if (enemyNear(r + 4)) { E.inv = 0; damageEnemy(25 + p * 40); if (!E.dead) { E.vy = 18 + p * 14; E.awake = true; } }
+  if (P.y < 1.5) addCrater(P.x, P.z, r);
+  dust(P.x, P.y, P.z, 50 + p * 60 | 0, 18 + p * 18);
+  jolt(.8 + p, .05 + p * .07); sfx(1, 220, .5 + p * .6);
+  P.leaping = false; P.cm = { name: 'land', t: 0, spin: 0, cd: 0 };
+}
+function titanLeap(charge) {
+  const k = clamp((charge - .16) / .8, 0, 1), flat = [Math.sin(cam.yaw), Math.cos(cam.yaw)];
+  const forward = (24 + 52 * k) * (1 - clamp(cam.pitch, 0, 1.2) * .55);   // aim high to go up, level to go far
+  P.vx = flat[0] * forward; P.vz = flat[1] * forward;
+  P.vy = 32 + 34 * k + clamp(cam.pitch, 0, 1.2) * 16 * k;
+  P.grounded = false; P.coyote = 0; P.leaping = true; P.yaw = cam.yaw;
+  byEnemy = true; if (P.y > 1) carve(P.x, P.y - 1.5, P.z, 3.5, 12); byEnemy = false;
+  if (P.y < 1.5) addCrater(P.x, P.z, 3 + k * 5);
+  dust(P.x, P.y, P.z, 24 + k * 40 | 0, 10 + k * 14); jolt(.4 + k * .6, .03); sfx(1, 480, .5);
+  style('jump', 6);
+}
+const nearest = (list, reach) => {
+  let best = null, bd = reach;
+  for (const o of list) { const d = Math.hypot(o.x - P.x, (o.y || 0) - P.y, o.z - P.z); if (d < bd && !o.held && !o.dead) { best = o; bd = d; } }
+  return best;
+};
+function grab(look) {
+  let car = nearest(cars, 9), civ = nearest(civs, 7.5);
+  // whichever is closer to hand
+  if (car && civ) { if (Math.hypot(civ.x - P.x, civ.z - P.z) < Math.hypot(car.x - P.x, car.z - P.z)) car = null; else civ = null; }
+  if (enemyNear(8)) {
+    P.held = { type: 'rival', t: 0 }; E.awake = true; E.inv = 0; damageEnemy(10); say('GOT ' + ROSTER[foe].name, .9);
+  } else if (car) { car.held = true; car.wreck = 0; car.flung = false; P.held = { type: 'car', o: car, t: 0 }; }
+  else if (civ) { civ.held = true; civ.down = 0; civ.flung = false; P.held = { type: 'civ', o: civ, t: 0 }; }
+  else {                                                      // rubble: from a wall if one is in front, else the road
+    const r = raycast([P.x, P.y + 2.5, P.z], look, 10);
+    let color = [.4, .34, .3];
+    if (r && r.p[1] > .5) {
+      const b = buildingAt(r.p);
+      if (b) color = b.color;
+      byEnemy = true; carve(r.p[0] + look[0], r.p[1] + look[1], r.p[2] + look[2], 2.8, 8); byEnemy = false;
+    } else if (P.grounded) { addCrater(P.x, P.z, 3.5); dust(P.x, P.y, P.z, 20, 10); }
+    else return;
+    P.held = { type: 'rock', color, t: 0 };
+  }
+  style('grab', 8); sfx(.7, 500, .25); jolt(.3, .03);
+  if (P.held.type !== 'rival') say({ car: 'CAR', civ: 'BYSTANDER', rock: 'RUBBLE' }[P.held.type], .7);
+}
+function holdPoint() { return [P.x + Math.sin(P.yaw) * .4, P.y + 5.6, P.z + Math.cos(P.yaw) * .4]; }
+// keep whatever is held above his head
+function stepHeld(dt) {
+  const h = P.held;
+  if (!h) return;
+  h.t += dt;
+  const [x, y, z] = holdPoint();
+  if (h.type === 'car') Object.assign(h.o, { x, y, z, yaw: P.yaw + Math.PI / 2, pitch: 0, roll: 0 });
+  else if (h.type === 'civ') Object.assign(h.o, { x, y: y - .5, z, yaw: P.yaw + Math.PI / 2, panic: 8 });
+  else if (h.type === 'rival') {
+    if (E.dead) { P.held = null; return; }
+    Object.assign(E, { x, y: y - .8, z, px: x, py: y - .8, pz: z, vx: 0, vy: 0, vz: 0, state: 'idle', cd: .8, stun: .1 });
+    if (h.t > 2) { P.held = null; E.vy = 22; E.vx = -Math.sin(P.yaw) * 20; E.vz = -Math.cos(P.yaw) * 20; E.stun = .45; say(ROSTER[foe].name + ' BREAKS FREE', .9); }
+  }
+}
+function throwHeld(look) {
+  const h = P.held;
+  P.held = null;
+  const from = holdPoint();
+  const ahead = !E.dead && h.type !== 'rival' && Math.hypot(E.x - P.x, E.z - P.z) < 90 &&
+    Math.abs(Math.atan2(Math.sin(Math.atan2(E.x - P.x, E.z - P.z) - cam.yaw), Math.cos(Math.atan2(E.x - P.x, E.z - P.z) - cam.yaw))) < .35;
+  const r = raycast(aimOrigin(look), look, 220);
+  const to = ahead ? [E.x, E.y + 1.5, E.z] : r ? r.p : [0, 1, 2].map(i => cam.pos[i] + look[i] * 220);
+  const d = to.map((v, i) => v - from[i]), l = Math.hypot(...d) || 1, u = d.map(v => v / l);
+  const speed = { car: 82, civ: 48, rock: 115, rival: 80 }[h.type];
+  const [vx, vy, vz] = [u[0] * speed, u[1] * speed + (h.type === 'rock' ? 0 : 8), u[2] * speed];
+  if (h.type === 'rock') thrown.push({ p: from, v: [vx, vy, vz], color: h.color, spin: 0, life: 4, r: 6.5 });
+  else if (h.type === 'car') Object.assign(h.o, { held: false, flung: true, wreck: 14, vx, vy, vz, spin: rr(-6, 6) });
+  else if (h.type === 'civ') Object.assign(h.o, { held: false, flung: true, lethal: true, vx, vy, vz });
+  else Object.assign(E, { vx, vy, vz, stun: 1.1, flung: true, state: 'idle', cd: 1 });
+  P.yaw = cam.yaw; startCm('throw'); style('wreck', 10); sfx(.8, 400, .35); jolt(.4, .02);
+}
+function bruteActions(look) {
+  // Titan Leap: hold jump on the ground, release to go
+  if (pressed.has('Space') && (P.grounded || P.coyote > 0) && !P.wall && (!P.cm || P.cm.name === 'land')) { P.leapCharge = 0; P.cm = null; P.jumpBuf = 0; }
+  if (P.leapCharge >= 0) {
+    P.jumpBuf = 0;
+    if (P.coyote <= 0 || P.cm) P.leapCharge = -1;
+    else if (keys.has('Space')) { P.leapCharge += STEP; P.vx *= 1 - 5 * STEP; P.vz *= 1 - 5 * STEP; }
+    else {
+      if (P.leapCharge < .16) { P.vy = 15 * ROSTER.brute.jump; P.grounded = false; P.coyote = 0; style('jump', 3); sfx(.2, 700, .12); }
+      else titanLeap(P.leapCharge);
+      P.leapCharge = -1;
+    }
+  }
+  const m = P.cm, free = !m || m.name === 'land' || m.name === 'combo' && m.t > .09;
+  if (P.held && (pressed.has('mouse0') || pressed.has('KeyG'))) {
+    throwHeld(look); pressed.delete('mouse0'); pressed.delete('KeyG'); P.atkBuf = 0; P.crossUsed = true; return;
+  }
+  if (pressed.has('mouse0')) { P.atkBuf = .18; P.hold = 0; }
+  P.atkBuf -= STEP;
+  P.hold = keys.has('mouse0') ? P.hold + STEP : 0;
+  if (!keys.has('mouse0')) P.crossUsed = false;
+  if (P.atkBuf > 0 && free) {
+    P.atkBuf = 0; P.swings = (P.swings + 1) % 3;
+    if (enemyNear(11)) cam.yaw = Math.atan2(E.x - P.x, E.z - P.z);
+    startCm('combo', { n: P.swings }); style('slash', 5); sfx(.4, 900, .1);
+  }
+  if (P.hold > .22 && !P.crossUsed && (!m || m.name === 'combo')) { P.crossUsed = true; startCm('charge', { power: 0 }); say('TITAN PUNCH', .8); }
+  if (pressed.has('mouse2') && free && P.dashes > 0) { P.dashes--; startCm('dash', { d: [look[0], Math.max(P.grounded ? 0 : -1, look[1]), look[2]] }); style('dash', 8); sfx(.7, 600, .4); }
+  if (pressed.has('KeyE') && P.dashes > 0 && !P.dash) {
+    P.cm = null; P.dashes--; P.dash = .16; P.wall = null; P.yaw = cam.yaw;
+    const y = P.grounded ? Math.max(0, look[1]) : look[1], l = Math.hypot(look[0], y, look[2]);
+    P.dashDir = [look[0] / l, y / l, look[2] / l]; style('dash', 5); sfx(.35, 900, .25);
+  }
+  if (pressed.has('KeyF') && free) { P.wall = null; startCm('slam', { top: P.y, slammed: false }); if (P.grounded) { P.vy = 26; P.grounded = false; } style('meteor', 14); say('QUAKE SLAM', .8); }
+  if (pressed.has('KeyG') && free) grab(look);
+  if (pressed.has('KeyT') && free) { startCm('clap', { done: false }); style('tripwire', 14); say('THUNDERCLAP', .8); }
+  if (pressed.has('KeyQ')) {
+    if (P.style < 100) say('STYLE ' + (P.style | 0) + '%', .7);
+    else { P.style = 0; startCm('quake', { rings: 0 }); say('CATACLYSM', 1.4); sfx(1, 200, 1.2); }
+  }
+}
+function bruteMove(dt) {
+  const m = P.cm;
+  if (!m) return false;
+  m.t += dt;
+  const done = () => { if (P.cm === m) P.cm = null; };
+  const smash = (x, y, z, r, push = 26) => { byEnemy = true; const n = carve(x, y, z, r, push); byEnemy = false; if (n) cam.shake = Math.max(cam.shake, .5); return n; };
+  const front = (d, up, r, push) => smash(P.x + Math.sin(P.yaw) * d, P.y + up, P.z + Math.cos(P.yaw) * d, r, push);
+  const bite = (r, dmg) => { if (!enemyNear(r)) return false; E.inv = 0; damageEnemy(dmg); return true; };
+  if (m.name === 'combo') {
+    P.yaw = cam.yaw;
+    const heavy = m.n === 2;
+    if (!m.done && m.t > .045) { m.done = true; if (front(3.6, 2.2, heavy ? 5 : 3.8, 30)) sfx(.8, 600, .18); bite(7, heavy ? 36 : 18); if (heavy) { jolt(.8, .06); dust(P.x + Math.sin(P.yaw) * 4, P.y, P.z + Math.cos(P.yaw) * 4, 18, 14); } }
+    if (enemyNear(18) && !enemyNear(4.5) && m.t < .1) { P.vx = Math.sin(P.yaw) * 44; P.vz = Math.cos(P.yaw) * 44; }
+    if (m.t > (heavy ? .24 : .15)) done();
+    return false;
+  }
+  if (m.name === 'charge') {
+    P.yaw = cam.yaw; m.power = Math.min(1, m.t / .8); P.vx *= 1 - 4 * dt; P.vz *= 1 - 4 * dt;
+    if (!keys.has('mouse0')) { P.cm = { name: 'punch', t: 0, power: m.power, spin: 0, cd: 0 }; sfx(1, 350, .5); }
+    return false;
+  }
+  if (m.name === 'punch') {
+    if (!m.done) {
+      m.done = true;
+      const p = m.power;
+      for (let d = 4; d <= 6 + p * 12; d += 4) front(d, 2.3, 4.5 + p * 2.5, 40);
+      if (bite(9 + p * 8, 40 + p * 60) && !E.dead) { E.vx = Math.sin(P.yaw) * 60; E.vz = Math.cos(P.yaw) * 60; E.vy = 20; E.stun = .7; }
+      dust(P.x + Math.sin(P.yaw) * 6, P.y, P.z + Math.cos(P.yaw) * 6, 40, 24); jolt(1.3, .12); style('crossfall', 14);
+    }
+    P.vx = Math.sin(P.yaw) * 20 * (1 - m.t / .25); P.vz = Math.cos(P.yaw) * 20 * (1 - m.t / .25);
+    if (m.t > .25) done();
+    return true;
+  }
+  if (m.name === 'dash') {
+    if (!m.stampede && m.t > .34 && keys.has('mouse2')) { m.stampede = true; m.tick = 0; say('STAMPEDE', .9); }
+    if (!m.stampede) {
+      const d = m.d;
+      P.vx = d[0] * 88; P.vy = d[1] * 88; P.vz = d[2] * 88; P.yaw = Math.atan2(d[0], d[2]);
+      smash(P.x + d[0] * 3, P.y + 2.4 + d[1] * 3, P.z + d[2] * 3, 4.6, 34);
+      if (!m.hit && bite(6.5, 38)) {
+        m.hit = true;
+        if (!E.dead && keys.has('mouse2')) { m.stampede = m.carry = true; m.tick = m.grind = 0; P.yaw = Math.atan2(d[0], d[2]); say('STAMPEDE', .9); }
+        else if (!E.dead) { E.vx = d[0] * 50; E.vz = d[2] * 50; E.vy = 18; E.stun = .6; }
+      }
+      if (m.t > .34) { P.vx *= .3; P.vy *= .2; P.vz *= .3; done(); }
+      return true;
+    }
+    // steered by the camera, hugging the ground, through whatever is in the way
+    const turn = Math.atan2(Math.sin(cam.yaw - P.yaw), Math.cos(cam.yaw - P.yaw));
+    P.yaw += clamp(turn, -3.2 * dt, 3.2 * dt);
+    const fx = Math.sin(P.yaw), fz = Math.cos(P.yaw);
+    P.vx = fx * 66; P.vz = fz * 66; P.vy = Math.max(P.vy - 38 * dt, -60);
+    smash(P.x + fx * 3, P.y + 3, P.z + fz * 3, 4.4, 34);
+    if ((m.tick -= dt) <= 0) { m.tick = .09; dust(P.x - fx, P.y, P.z - fz, 8, 9); cam.shake = Math.max(cam.shake, .45); sfx(.4, 300, .12); }
+    if (!m.carry && enemyNear(7)) { m.carry = true; m.grind = 0; E.inv = 0; damageEnemy(20); jolt(.7, .08); }
+    if (m.carry && !E.dead) {                                  // pinned to the shoulder
+      Object.assign(E, { x: P.x + fx * 4.2, y: P.y + .6, z: P.z + fz * 4.2, vx: 0, vy: 0, vz: 0, state: 'idle', cd: .6 });
+      if ((m.grind += dt) > .3) { m.grind = 0; E.inv = 0; damageEnemy(8); }
+    }
+    if (!keys.has('mouse2') || m.t > 2.6) {                   // finish: shoulder slam
+      smash(P.x + fx * 5, P.y + 2, P.z + fz * 5, 7, 44);
+      if (m.carry && !E.dead) { E.inv = 0; damageEnemy(45); E.vx = fx * 65; E.vz = fz * 65; E.vy = 24; E.stun = .8; }
+      else bite(8, 30);
+      dust(P.x + fx * 5, P.y, P.z + fz * 5, 50, 24); jolt(1.3, .11); sfx(1, 260, .8);
+      P.vx = fx * 14; P.vz = fz * 14; style('kick', 16); done();
+    }
+    return true;
+  }
+  if (m.name === 'land') { P.vx *= 1 - 12 * dt; P.vz *= 1 - 12 * dt; if (m.t > .3) done(); return false; }
+  if (m.name === 'slam') {
+    m.top = Math.max(m.top, P.y);
+    if (m.t < .18) { P.vy -= 38 * dt; return true; }
+    P.vy = -110; P.vx *= .9; P.vz *= .9;
+    if (P.grounded || m.t > 2.5) {
+      const r = clamp(8 + (m.top - P.y) * .12, 8, 16);
+      smash(P.x, P.y + 1, P.z, r, 34); bite(r + 3, 55);
+      if (P.y < 1) addCrater(P.x, P.z, r);
+      dust(P.x, P.y, P.z, 90, 30); jolt(1.6, .12); sfx(1, 240, 1);
+      P.vy = 0; done();
+    }
+    return true;
+  }
+  if (m.name === 'clap') {
+    P.vx *= 1 - 8 * dt; P.vz *= 1 - 8 * dt;
+    if (!m.done && m.t > .1) {
+      m.done = true;
+      for (let d = 4; d <= 20; d += 3.5) { front(d, 2, 2.5 + d * .17, 36); dust(P.x + Math.sin(P.yaw) * d, P.y, P.z + Math.cos(P.yaw) * d, 10, 12); }
+      const a = Math.atan2(E.x - P.x, E.z - P.z) - P.yaw;
+      if (Math.abs(Math.atan2(Math.sin(a), Math.cos(a))) < .6 && bite(23, 34) && !E.dead) { E.vx = Math.sin(P.yaw) * 55; E.vz = Math.cos(P.yaw) * 55; E.vy = 16; E.stun = .6; }
+      jolt(1.2, .08); sfx(1, 700, .7);
+    }
+    if (m.t > .3) done();
+    return false;
+  }
+  if (m.name === 'quake') {
+    P.vx *= 1 - 8 * dt; P.vz *= 1 - 8 * dt;
+    if (m.rings < 3 && m.t > .12 + m.rings * .42) {
+      const r = 9 + m.rings * 8; m.rings++;
+      smash(P.x, P.y + 1, P.z, 7, 30);
+      for (let i = 0; i < 16; i++) { const a = i / 16 * 6.283, x = P.x + Math.sin(a) * r, z = P.z + Math.cos(a) * r; smash(x, P.y + 2, z, 4.5, 30); if (i % 2) dust(x, P.y, z, 8, 10); }
+      bite(r + 5, 70); jolt(1.5, .1); sfx(1, 220, .8);
+    }
+    if (m.t > 1.35) done();
+    return true;
+  }
+  if (m.t > .3) done();
+  return false;
+}
+const BRUTE_VIEW = { land: 'land', combo: 'combo', charge: 'charge', punch: 'punch', dash: 'dash', slam: 'leap', clap: 'clap', quake: 'quake', throw: 'throw' };
+function drawBrutePlayer(time) {
+  const m = P.cm;
+  const v = { x: P.x, y: P.y, z: P.z, vx: P.vx, vz: P.vz, vy: P.vy, yaw: P.yaw, phase: P.phase, grounded: P.grounded || !!P.wall, hurtT: P.hurtT - .2, enraged: P.style >= 100, carry: !!P.held,
+    state: m ? 'act' : 'idle', move: m ? BRUTE_VIEW[m.name] : 'combo', t: m ? m.t : 0, hits: 0 };
+  if (!m && P.leapCharge > .1) { v.state = 'act'; v.move = 'coil'; }
+  else if (!m && P.leaping) { v.state = 'act'; v.move = 'fly'; }
+  if (m?.name === 'combo') { v.n = m.n; v.t = Math.min(.24, m.t * 1.6); }
+  if (m?.name === 'clap' && m.t < .1) v.state = 'wind';
+  drawBrute(v, time);
+  if (P.leapCharge > .16) for (let i = 0; i < 16; i++) { const a = i / 16 * 6.283 + time * 3, r = 4.5 - clamp((P.leapCharge - .16) / .8, 0, 1) * 1.8;
+    push(P.x + Math.sin(a) * r, P.y + .2 + (time * 6 + i * .37) % 1.6, P.z + Math.cos(a) * r, 3, .16, .5, .16, a, AMBER); }
+  if (m?.name === 'charge') for (let i = 0; i < 10; i++) { const a = time * 14 + i * .63, r = 3.2 - (time * 4 + i * .3) % 1 * 2.6 * m.power;
+    push(P.x + Math.sin(a) * r, P.y + 2.4 + Math.sin(i * 2.4) * 1.2, P.z + Math.cos(a) * r, 3, .18, .18, .18, a, AMBER); }
+}
+
 function actions() {
   const look = lookDir();
+  if (who === 'brute') return bruteActions(look);
   if (who === 'cinder') return cinderActions(look);
   const busy = P.storm || P.meteor || P.guill || P.kick || P.cross;
   // attack: instant, buffered; keep holding for CROSSFALL
@@ -1043,8 +1354,10 @@ function stepPlayer(dt) {
   updateChain(dt);
   updateLash(dt);
   updateMoves(dt);
+  if (P.grounded && P.vy <= 0) P.leaping = false;
   const driven = cinderMove(dt);
-  if (P.chain?.attached && !P.chain.zip && P.jumpBuf > 0) { P.chain.zip = true; P.jumpBuf = 0; style('zip', 8); sfx(.3, 1700, .25); }
+  stepHeld(dt);
+  if (P.chain?.attached && !P.chain.slack && !P.chain.zip && P.jumpBuf > 0) { reelIn(); P.jumpBuf = 0; }   // jump also reels while swinging
 
   // slide / crouch
   let hs = Math.hypot(P.vx, P.vz);
@@ -1073,7 +1386,7 @@ function stepPlayer(dt) {
       P.yaw = Math.atan2(nx, nz); jumped = true; sfx(.25, 1100, .2);
     } else if (P.grounded || P.coyote > 0) {
       const c = Math.max(0, P.charge);
-      P.vy = 15 + c * c * 39; P.grounded = false; P.coyote = 0; P.slide = false; P.charge = -1; jumped = true; style('jump', 3);
+      P.vy = (15 + c * c * 39) * ROSTER[who].jump; P.grounded = false; P.coyote = 0; P.slide = false; P.charge = -1; jumped = true; style('jump', 3);
       if (c > .6) { dust(P.x, P.y, P.z, 24, 11); sfx(.6, 600, .35); } else sfx(.15, 900, .1);
     } else if (pressed.has('Space')) {
       P.airPress = true;
@@ -1101,7 +1414,7 @@ function stepPlayer(dt) {
     P.vx = d[0] * 65; P.vy = d[1] * 65; P.vz = d[2] * 65;
     if (carve(P.x + d[0] * 2, P.y + 1 + d[1] * 2, P.z + d[2] * 2, 3.4, 18)) { cam.shake = .5; sfx(.5, 600, .2); }
     if (P.dash <= 0) { P.dash = 0; P.vx *= .55; P.vy *= .3; P.vz *= .55; }
-  } else if (P.chain?.attached && (!P.grounded || P.chain.zip)) {
+  } else if (P.chain?.attached && (P.chain.zip || !P.chain.slack && !P.grounded)) {
     swing(dt, wx, wz);
     if (Math.hypot(P.vx, P.vz) > 1) P.yaw = Math.atan2(P.vx, P.vz);
   } else if (P.wall) {
@@ -1114,7 +1427,7 @@ function stepPlayer(dt) {
       P.wall = null; P.vy = 14; P.vx = -nx * 16; P.vz = -nz * 16;   // vault over the lip
     } else if (!sprint) { P.wall = null; P.vy = 4; P.vx = nx * 5; P.vz = nz * 5; P.wallLock = .3; }
   } else {
-    const top = low ? 7 : sprint ? 31 : 11;
+    const top = low ? 7 : (sprint ? 31 : 11) * ROSTER[who].speed;
     hs = Math.hypot(P.vx, P.vz);
     if (P.slide && !jumped) {
       if (wl) steer(wx, wz, 1.4, dt);
@@ -1167,6 +1480,11 @@ function stepPlayer(dt) {
   collideCars();
   P.x = clamp(P.x, -limit, limit); P.z = clamp(P.z, -limit, limit);
 
+  let ploughed = false;
+  if (wallN && P.leaping && speedIn > 30) {                  // a leaping giant goes through, not up
+    byEnemy = true; ploughed = carve(P.x - wallN[0] * 2.4, P.y + 2.4, P.z - wallN[1] * 2.4, 4.6, 28) > 0; byEnemy = false;
+    if (ploughed) { cam.shake = Math.max(cam.shake, .6); sfx(.8, 600, .2); wallN = null; }
+  }
   if (wallN && P.chain?.zip) { P.zipT = .9; dropChain(false); }
   if (wallN && !P.dash && !P.dive && !P.kick && !P.orbit && !P.guill && !P.storm && !P.cross && !P.carving && !driven) {
     const [nx, nz] = wallN;
@@ -1176,14 +1494,15 @@ function stepPlayer(dt) {
       dropChain(false); P.wall = wallN; P.airJumps = 1; P.dashes = 2; P.charge = -1; P.glide = false; P.slide = false;
     }
   }
-  if (!P.wall) { if (hitX) P.vx = 0; if (hitZ) P.vz = 0; }
+  if (!P.wall && !ploughed) { if (hitX) P.vx = 0; if (hitZ) P.vz = 0; }
 
   // landings
   if (P.grounded && !wasGrounded) {
     P.landT = 0;
     cam.dip = clamp(-impact * .014, 0, .8);
-    if (P.dive) { act('slam', .34); slam(Math.max(24, (P.apex - P.y) + 30)); jolt(1.2, .1); P.meteor = null; }
-    else if (impact < -60) slam(8);
+    if (who === 'brute' && P.cm?.name !== 'slam' && (P.leaping || impact < -34)) titanLand(-impact);
+    else if (P.dive) { act('slam', .34); slam(Math.max(24, (P.apex - P.y) + 30)); jolt(1.2, .1); P.meteor = null; }
+    else if (impact < -60 && !P.chain?.zip && !(P.zipT > .6)) slam(8);
     else if (impact < -18) { dust(P.x, P.y, P.z, 10, 7); sfx(.25, 400, .18); }
     P.dive = false;
   }
@@ -1220,17 +1539,46 @@ function step(dt) {
 
 // ───────────────────────── CINDER: the dual-sword rival ─────────────────────────
 const E = { max: 900 };
-let who = 'hero';                         // which fighter you control: 'hero' or 'cinder'
+let who = 'hero', foe = 'cinder';          // fighter you control, fighter you face
+// one table drives the select screen, the help panel, the HUD and the rival's AI
+// stats: power / speed / reach / toughness out of 5. moves: [action, name, what it does]
+const ROSTER = {
+  hero: { name: 'KESTREL', role: 'Kusarigama drifter', stats: [3, 4, 5, 2], speed: 1, jump: 1, armor: 1, power: .9, hp: 750, camH: 2.65, camD: 6, tempo: 1,
+    desc: 'A masked wanderer who lives off the ground. The sickle flies out on its chain to cut, hook and swing; the claw ball is the counterweight. Fragile, but nobody moves across the city like this.',
+    moves: [['mouse0', 'Sickle slash / throw', 'Slashes up close, throws the sickle at range'], ['mouse0', 'Crossfall (hold)', 'Swipe, swipe, then an overhead slam'],
+      ['mouse2', 'Chain (hold)', 'Hooks what you aim at: swing from anything overhead'],
+      ['KeyR', 'Reel in', 'While hooked: go to the ground or a car or wall; people are dragged to you'], ['KeyF', 'Ground pound / Meteor Drop', 'In the air, hurls the ball down and follows it'],
+      ['KeyG', 'Reel-In / Wrecking Ball', 'Yank out a block, then hold to whirl and throw'], ['KeyT', 'Topple', 'Pull over a tower with a damaged base'],
+      ['KeyZ', 'Tripwire', 'Set two ends, press again to rip them out'], ['KeyX', 'Orbit (hold)', 'Circle a tower, slicing it'], ['KeyQ', 'Reaper Sphere', 'Ultimate: a full sphere of blades']] },
+  cinder: { name: 'CINDER', role: 'Twin-blade ember knight', stats: [4, 4, 3, 3], speed: 1, jump: 1, armor: .9, power: 1, hp: 900, camH: 4.3, camD: 10, tempo: 1,
+    desc: 'A horned knight in charred plate with a molten blade in each hand. Relentless in close, with fire waves for anyone who tries to keep their distance.',
+    moves: [['mouse0', 'Twin Fangs', 'Three-cut combo'], ['mouse0', 'Fire Wheel (hold)', 'Spinning blades; you can still move'], ['mouse2', 'Ember Dash', 'Cut straight through anything'],
+      ['KeyF', 'Comet Cleave', 'Leap and crash down on your aim'], ['KeyG', 'Cross Flare', 'A burning X that slices buildings'], ['KeyT', 'Phoenix Rise', 'Uppercut that launches'],
+      ['KeyZ', 'Flicker', 'Blink, behind your rival if near'], ['KeyQ', 'Ember Rain', 'Ultimate: blades fall from the sky']] },
+  brute: { name: 'BASTION', role: 'Colossal brawler', stats: [5, 5, 2, 5], speed: 1.28, jump: 1.25, armor: .65, power: 1.25, hp: 1100, camH: 4.8, camD: 11, tempo: 1.25,
+    desc: 'A mountain of muscle in iron gauntlets who moves far faster than anything that size should. Shrugs off hits and flattens whatever is in front of those fists.',
+    moves: [['mouse0', 'Hammer Fists', 'Very fast jab, hook, hammer'], ['mouse0', 'Titan Punch (hold)', 'Charge, release; longer hits harder'], ['mouse2', 'Bull Rush / Stampede (hold)', 'Keep holding to plough on, carry the rival and slam them'],
+      ['Space', 'Titan Leap (hold)', 'Tap to hop; charge and release to soar. The landing cracks the ground'],
+      ['KeyF', 'Quake Slam', 'Smash the ground; huge from the air'], ['KeyG', 'Grab / Throw', 'Seize the rival, a car, a bystander or rubble; press again or attack to throw'], ['KeyT', 'Thunderclap', 'Shockwave in a wide cone'],
+      ['KeyQ', 'Cataclysm', 'Ultimate: three rolling quakes']] },
+};
+const LABELS = {
+  hero: { combo: 'SICKLE FLURRY', wave: 'SICKLE THROW', dash: 'CHAIN RUSH', cross: 'CROSSFALL', leap: 'METEOR DROP', sphere: 'REAPER SPHERE', blink: 'VANISH' },
+  brute: { combo: 'HAMMER FISTS', dash: 'BULL RUSH', wave: 'BOULDER TOSS', clap: 'THUNDERCLAP', leap: 'SKYFALL CRUSH', quake: 'CATACLYSM', blink: 'SIDESTEP' },
+  cinder: {},
+};
+const moveLabel = m => LABELS[foe][m] || MOVES[m].label;
 let rain = [];                            // falling blades, from either side
 let waves = [], fighting = false;
 const HOME = [0, 0, 38];
 function resetEnemy() {
+  E.max = ROSTER[foe].hp;
   Object.assign(E, { x: HOME[0], y: HOME[1], z: HOME[2], px: HOME[0], py: HOME[1], pz: HOME[2], vx: 0, vy: 0, vz: 0, yaw: Math.PI,
     hp: E.max, awake: false, dead: false, state: 'idle', t: 0, cd: 1, hurtT: 0, inv: 0, hits: 0, target: [0, 0, 0], dir: [0, 0, 1],
-    enraged: false, grounded: true, last: '', phase: 0, carveT: 0, poked: 0, pokeT: 0, guard: 0, dodged: false });
+    enraged: false, stun: 0, flung: false, grounded: true, last: '', phase: 0, carveT: 0, poked: 0, pokeT: 0, guard: 0, dodged: false });
   waves = []; rain = [];
 }
-resetEnemy();
+E.max = 900;
 
 // windup (telegraph), active and recovery times for each move
 const MOVES = {
@@ -1242,6 +1590,10 @@ const MOVES = {
   blink:  { wind: .22, act: .1,  rest: .05, label: 'FLICKER' },
   rise:   { wind: .3,  act: .35, rest: .15, label: 'PHOENIX RISE' },
   rain:   { wind: .6,  act: .5,  rest: .7,  label: 'EMBER RAIN' },
+  cross:  { wind: .3,  act: .7,  rest: .55, label: 'CROSSFALL' },
+  sphere: { wind: .8,  act: 1.0, rest: 1.0, label: 'SPHERE' },
+  clap:   { wind: .45, act: .25, rest: .55, label: 'THUNDERCLAP' },
+  quake:  { wind: .6,  act: 1.3, rest: .9,  label: 'QUAKE' },
 };
 
 // everything the player does goes through carve(), so that is also what hurts him
@@ -1270,12 +1622,12 @@ function damageEnemy(dmg) {
   }
   if (!E.enraged && E.hp < E.max / 2) { E.enraged = true; say(foeName() + ' IGNITES', 1.8); dust(E.x, E.y, E.z, 50, 22); cam.shake = 1; sfx(1, 700, .8); }
   if (E.hp <= 0) {
-    E.hp = 0; E.dead = true; waves = []; say(foeName() + ' DEFEATED  ·  K to rematch', 4);
+    E.hp = 0; E.dead = true; waves = []; say(foeName() + ' DEFEATED  ·  Esc for rematch', 4);
     for (let i = 0; i < 90; i++) debris(E.x + rr(-1, 1), E.y + rr(0, 3), E.z + rr(-1, 1), rr(.2, .9), i % 3 ? [.12, .1, .1] : [1, .45, .1], rr(-18, 18), rr(2, 26), rr(-18, 18), rr(1.5, 4));
     cam.shake = 1.6; hitStop = .2; sfx(1, 300, 1.4);
   }
 }
-const foeName = () => who === 'cinder' ? 'RIME' : 'CINDER';
+const foeName = () => ROSTER[foe].name + (foe === who ? ' (MIRROR)' : '');
 function strikeEnemy(x, y, z, r) {
   if (E.dead) return;
   const d = Math.hypot(E.x - x, clamp(y, E.y, E.y + 2.7) - y, E.z - z);
@@ -1286,14 +1638,14 @@ function wreck(x, y, z, r, push = 18) { byEnemy = true; const n = carve(x, y, z,
 
 function hurtPlayer(dmg, fx, fz, knock = 18) {
   if (debug || P.iframe > 0 || P.dash > 0 || P.kick || P.storm || P.cm?.name === 'dash') return false;   // dashing dodges
-  P.hp -= dmg; P.iframe = .55; P.hurtT = .35;
+  P.hp -= dmg * ROSTER[foe].power * ROSTER[who].armor; P.iframe = .55; P.hurtT = .35;
   const dx = P.x - fx, dz = P.z - fz, d = Math.hypot(dx, dz) || 1;
   dropChain(false); P.cm = P.cross = P.orbit = P.guill = P.meteor = P.wall = null; P.dive = P.slide = false;
   P.vx = dx / d * knock; P.vz = dz / d * knock; P.vy = Math.max(P.vy, 11); P.grounded = false;
   P.style = Math.max(0, P.style - 12);
   cam.shake = Math.max(cam.shake, .9); hitStop = Math.max(hitStop, .07); sfx(.9, 500, .25);
   if (P.hp <= 0) {                                          // back to the plaza; the city keeps its scars
-    Object.assign(P, { x: 0, y: 0, z: 0, px: 0, py: 0, pz: 0, vx: 0, vy: 0, vz: 0, hp: 100, holding: null, iframe: 1.5 });
+    Object.assign(P, { x: 0, y: 0, z: 0, px: 0, py: 0, pz: 0, vx: 0, vy: 0, vz: 0, hp: 100, holding: null, held: null, iframe: 1.5 });
     resetEnemy(); say('YOU FELL', 2);
   }
   return true;
@@ -1303,24 +1655,27 @@ const toPlayer = () => { const d = [P.x - E.x, P.y - E.y, P.z - E.z]; return { d
 const faceXZ = (x, z) => { E.yaw = Math.atan2(x - E.x, z - E.z); };
 
 function chooseMove() {
-  const { flat, d } = toPlayer(), high = d[1] > 9;
-  const pool = high ? ['leap', 'wave', 'blink', 'wave'] : flat < 6 ? ['combo', 'combo', 'rise', 'whirl', 'leap']
-    : flat < 26 ? ['dash', 'dash', 'whirl', 'wave', 'leap', 'blink'] : ['wave', 'leap', 'blink', 'dash', 'blink'];
-  if (E.enraged) pool.push('rain', 'rain');
+  const { flat, d } = toPlayer(), high = d[1] > 9, band = high ? 0 : flat < 6 ? 1 : flat < 26 ? 2 : 3;
+  const POOLS = {                    // [target above, close, mid, far], then enraged extras
+    cinder: [['leap', 'wave', 'blink', 'wave'], ['combo', 'combo', 'rise', 'whirl', 'leap'], ['dash', 'dash', 'whirl', 'wave', 'leap', 'blink'], ['wave', 'leap', 'blink', 'dash', 'blink'], ['rain', 'rain']],
+    hero:   [['leap', 'wave', 'dash'], ['combo', 'combo', 'cross', 'leap'], ['dash', 'wave', 'cross', 'wave', 'leap'], ['wave', 'dash', 'leap'], ['sphere', 'sphere']],
+    brute:  [['leap', 'wave', 'leap'], ['combo', 'combo', 'combo', 'clap', 'leap'], ['dash', 'dash', 'clap', 'wave', 'leap'], ['dash', 'wave', 'leap', 'dash'], ['quake', 'quake']],
+  };
+  const pool = [...POOLS[foe][band], ...(E.enraged ? POOLS[foe][4] : [])];
   let m;
   do m = pool[Math.random() * pool.length | 0]; while (m === E.last && pool.some(p => p !== E.last));
   return m;
 }
 function startMove(m) {
   E.move = E.last = m; E.state = 'wind'; E.t = 0; E.hits = 0;
-  if (m !== 'blink') say('⚔ ' + MOVES[m].label, .8);
+  if (m !== 'blink') say('⚔ ' + moveLabel(m), .8);
   sfx(.35, 2600, .3);
 }
 function fireWave(spread) {
   const from = [E.x, E.y + 1.8, E.z], lead = Math.min(.6, Math.hypot(P.x - E.x, P.z - E.z) / 62) * .8;
   const d = [P.x + P.vx * lead - from[0], P.y + 1 - from[1], P.z + P.vz * lead - from[2]], l = Math.hypot(...d) || 1;
   const a = Math.atan2(d[0], d[2]) + spread, flat = Math.hypot(d[0], d[2]) / l;
-  waves.push({ p: from, v: [Math.sin(a) * flat * 62, d[1] / l * 62, Math.cos(a) * flat * 62], yaw: a, life: 1.7, cd: 0, mine: false, hit: false });
+  waves.push({ p: from, v: [Math.sin(a) * flat * 62, d[1] / l * 62, Math.cos(a) * flat * 62], yaw: a, life: 1.7, cd: 0, mine: false, hit: false, kind: foe === 'hero' ? 'sickle' : foe === 'brute' ? 'rock' : 'x' });
 }
 
 // blades that drop on marked spots
@@ -1391,7 +1746,7 @@ function activeMove(dt) {
     reach(3.6, 18, 30);
   } else if (E.move === 'wave') {
     E.vx = E.vz = 0; E.vy = Math.max(E.vy, 0);
-    if (!E.hits) { E.hits = 1; faceXZ(P.x, P.z); if (E.enraged) [-.22, 0, .22].forEach(fireWave); else fireWave(0); sfx(.8, 900, .4); }
+    if (!E.hits) { E.hits = 1; faceXZ(P.x, P.z); if (E.enraged && foe === 'cinder') [-.22, 0, .22].forEach(fireWave); else fireWave(0); sfx(.8, 900, .4); }
   } else if (E.move === 'whirl') {                          // spinning blades that stalk you
     const speed = E.enraged ? 21 : 16;
     E.vx = (P.x - E.x) / (flat || 1) * speed; E.vz = (P.z - E.z) / (flat || 1) * speed;
@@ -1416,6 +1771,35 @@ function activeMove(dt) {
         cam.shake = Math.max(cam.shake, clamp(1.6 - l / 80, 0, 1.4)); sfx(1, 260, .9);
       }
     }
+  } else if (E.move === 'cross') {                           // wide swipes, then the slam out front
+    E.vx = E.vz = 0;
+    if (!E.hits && t > .16) { E.hits = 1; reach(11, 10, 10); for (let a = -1.4; a <= 1.4; a += .7) wreck(E.x + Math.sin(E.yaw + a) * 8, E.y + 1.4, E.z + Math.cos(E.yaw + a) * 8, 2.8); P.iframe = Math.min(P.iframe, .2); }
+    if (E.hits === 1 && t > .5) {
+      E.hits = 2; const x = E.x + Math.sin(E.yaw) * 8, z = E.z + Math.cos(E.yaw) * 8;
+      wreck(x, E.y + 1.5, z, 7, 26); if (E.y < 1) addCrater(x, z, 7); dust(x, E.y, z, 50, 20);
+      if (Math.hypot(P.x - x, P.y - E.y, P.z - z) < 8) hurtPlayer(20, E.x, E.z, 28);
+      cam.shake = 1; sfx(1, 280, .8);
+    }
+  } else if (E.move === 'sphere') {
+    E.vx = E.vz = 0; E.vy = t < .35 ? 18 : 0;
+    const r = Math.min(17, 4 + t * 20);
+    if ((E.carveT -= dt) <= 0) { E.carveT = .09; wreck(E.x, E.y + 1.5, E.z, r, 30); cam.shake = .7; }
+    if (!E.hits && Math.hypot(P.x - E.x, P.y - E.y, P.z - E.z) < r + 1 && hurtPlayer(30, E.x, E.z, 30)) E.hits = 1;
+  } else if (E.move === 'clap') {
+    E.vx = E.vz = 0;
+    if (!E.hits) {
+      E.hits = 1;
+      for (let d = 4; d <= 18; d += 3.5) { wreck(E.x + Math.sin(E.yaw) * d, E.y + 2, E.z + Math.cos(E.yaw) * d, 2.5 + d * .16, 30); dust(E.x + Math.sin(E.yaw) * d, E.y, E.z + Math.cos(E.yaw) * d, 10, 12); }
+      const off = Math.atan2(Math.sin(Math.atan2(P.x - E.x, P.z - E.z) - E.yaw), Math.cos(Math.atan2(P.x - E.x, P.z - E.z) - E.yaw));
+      if (flat < 20 && Math.abs(off) < .55 && Math.abs(P.y - E.y) < 7) hurtPlayer(16, E.x, E.z, 40);
+      cam.shake = 1.1; sfx(1, 500, .7);
+    }
+  } else if (E.move === 'quake') {                           // jump over the rolling rings
+    E.vx = E.vz = 0;
+    const wave = t / .42 | 0, r = ((t % .42) / .42) * 22 + 3;
+    E.ring = r;
+    if (wave >= E.hits && E.hits < 3) { E.hits++; E.struck = false; wreck(E.x, E.y + 1, E.z, 6, 24); dust(E.x, E.y, E.z, 40, 30); cam.shake = 1; sfx(1, 240, .5); }
+    if (!E.struck && Math.abs(Math.hypot(P.x - E.x, P.z - E.z) - r) < 2.5 && P.y - E.y < 2.5) { E.struck = true; P.iframe = 0; hurtPlayer(13, E.x, E.z, 16); }
   } else if (E.move === 'rise') {                            // uppercut that launches you, then he follows up
     E.vx = Math.sin(E.yaw) * 26; E.vz = Math.cos(E.yaw) * 26;
     if (t < .2) E.vy = 30;
@@ -1463,12 +1847,18 @@ function stepEnemy(dt) {
   const { flat, l } = toPlayer();
   if (!E.awake) { if (l < 22) { E.awake = true; say(foeName(), 1.6); sfx(1, 600, .8); } return; }
   E.t += dt;
-  const quick = E.enraged ? 1.35 : 1;
+  const quick = (E.enraged ? 1.35 : 1) * ROSTER[foe].tempo;
   const m = MOVES[E.move];
 
-  if (E.state === 'idle') {                                 // stalk: run, circle, leap up walls
+  if (E.stun > 0) {                                         // knocked flying: no control
+    E.stun -= dt; E.state = 'idle';
+    if (E.flung && (E.grounded && E.stun < .9 || hit(E.x - 1.2, E.y + .2, E.z - 1.2, E.x + 1.2, E.y + 2.6, E.z + 1.2))) {
+      E.flung = false; E.stun = .5; byEnemy = true; carve(E.x, E.y + 1.2, E.z, 5.5, 24); byEnemy = false;
+      E.inv = 0; damageEnemy(40); dust(E.x, E.y, E.z, 30, 16); jolt(.9, .06); E.vx *= .2; E.vz *= .2;
+    }
+  } else if (E.state === 'idle') {                          // stalk: run, circle, leap up walls
     faceXZ(P.x, P.z);
-    const speed = (E.enraged ? 22 : 16) * (flat > 40 ? 1.8 : 1);
+    const speed = (E.enraged ? 22 : 16) * (flat > 40 ? 1.8 : 1) * ROSTER[foe].speed;
     const toward = flat > 5 ? 1 : flat < 3 ? -.6 : 0, circle = flat < 14 ? .6 : 0;
     const fx = Math.sin(E.yaw), fz = Math.cos(E.yaw);
     E.vx = (fx * toward + fz * circle) * speed; E.vz = (fz * toward - fx * circle) * speed;
@@ -1495,10 +1885,11 @@ function stepEnemy(dt) {
     if (E.t >= m.rest / quick) { E.state = 'idle'; E.t = 0; E.cd = E.enraged ? .35 : .8; }
   }
 
-  const flying = E.state === 'act' && (E.move === 'dash' || E.move === 'whirl' || E.move === 'leap' || E.move === 'rise');
+  const flying = E.state === 'act' && (E.move === 'dash' || E.move === 'whirl' || E.move === 'leap' || E.move === 'rise' || E.move === 'sphere');
   if (!flying) E.vy -= 45 * dt;
   const bx = enemyMove('x', E.vx * dt), bz = enemyMove('z', E.vz * dt);
-  if ((bx || bz) && E.state === 'idle') E.vy = Math.max(E.vy, 26);               // scales the building
+  if ((bx || bz) && E.stun > 0) wreck(E.x + Math.sign(E.vx) * 1.5, E.y + 1.5, E.z + Math.sign(E.vz) * 1.5, 3.2);
+  if ((bx || bz) && E.state === 'idle' && !(E.stun > 0)) E.vy = Math.max(E.vy, 26);               // scales the building
   if ((bx || bz) && E.state === 'act' && E.move !== 'leap') wreck(E.x + Math.sin(E.yaw) * 1.5, E.y + 1.5, E.z + Math.cos(E.yaw) * 1.5, 3);
   E.grounded = false;
   if (enemyMove('y', E.vy * dt)) { if (E.vy < 0) E.grounded = true; E.vy = 0; }
@@ -1606,9 +1997,125 @@ function drawKnight(K, time, ex, ey, ez, pal) {
     push(ex + Math.sin(a) * 1.7, ey + 1 + (time * 2 + i * .55) % 3, ez + Math.cos(a) * 1.7, 3, .14, .14, .14, a, EMBER, a);
   }
 }
+function drawModel(kind, v, time, mirror) {
+  if (kind === 'cinder') return drawKnight(v, time, v.x, v.y, v.z, mirror ? FROST : FIRE);
+  tint = mirror;
+  if (kind === 'brute') drawBrute(v, time); else drawHeroAs(v, time);
+  tint = false;
+}
 function drawEnemy(time, alpha) {
   if (E.dead) return;
-  drawKnight(E, time, E.px + (E.x - E.px) * alpha, E.py + (E.y - E.py) * alpha, E.pz + (E.z - E.pz) * alpha, who === 'cinder' ? FROST : FIRE);
+  const v = Object.assign({}, E, { x: E.px + (E.x - E.px) * alpha, y: E.py + (E.y - E.py) * alpha, z: E.pz + (E.z - E.pz) * alpha });
+  drawModel(foe, v, time, foe === who);
+}
+
+// KESTREL is posed by the player code, so lend it the other fighter's state for a moment
+function drawHeroAs(v, time) {
+  const saved = Object.assign({}, P), mine = pose, myButt = butt, myRest = rest;
+  altPose = altPose || Object.assign({}, pose);
+  pose = altPose;
+  Object.assign(P, heroBlank, { x: v.x, y: v.y, z: v.z, yaw: v.yaw, vx: v.vx || 0, vy: v.vy || 0, vz: v.vz || 0, phase: v.phase || 0, grounded: v.grounded });
+  const m = v.move, on = v.state === 'wind' || v.state === 'act', t = v.t || 0, act = v.state === 'act';
+  let tip = null, ball = null;
+  if (on && m === 'combo') { const n = act ? Math.min(2, t / .25 | 0) : 0; P.act = { name: ['forehand', 'backhand', 'chop'][n], t: act ? t % .25 : .01, dur: .25 }; }
+  if (on && m === 'wave') { P.act = { name: 'throw', t: act ? t : .01, dur: .3 }; const w = waves.find(w => w.kind === 'sickle' && !w.mine); if (w) tip = w.p; }
+  if (on && m === 'dash') P.dash = act ? 1 : 0;
+  if (on && m === 'leap') P.act = { name: v.hits ? 'slam' : 'hurl', t: v.hits ? .2 : .02, dur: .34 };
+  if (on && m === 'sphere') P.storm = {};
+  if (on && m === 'cross') { P.cross = { t: act ? Math.min(CF.end, t * 1.25) : .01, yaw: v.yaw }; tip = crossTip(1); ball = crossTip(-1); }
+  const away = !!tip, { hand, grip } = buildCharacter(time, away);
+  if (away) {
+    const d = sub(tip, hand), l = Math.hypot(...d) || 1, u = d.map(n => n / l);
+    const origin = tip.map((n, i) => n - u[i] * Math.min(l, 1.8));
+    butt = drawSickle(origin, Math.atan2(u[0], u[2]), -Math.asin(clamp(u[1], -1, 1)), 1.6);
+    drawLinks(hand, butt, 0, .9, .17);
+  } else drawLinks(butt, grip, .45, .13, .035);
+  if (ball) { drawLinks(grip, ball, 0, .9, .17); drawBall(ball, v.yaw); } else { drawLinks(grip, rest, 0, .13, .035); drawBall(rest, v.yaw); }
+  Object.assign(P, saved);
+  pose = mine; butt = myButt; rest = myRest;
+}
+
+// BASTION: small head, enormous shoulders and fists
+const HIDE = [.6,.25,.17], HIDE2 = [.5,.2,.14], CANVAS = [.17,.18,.16], GAUNT = [.27,.28,.32], RIVET = [.65,.66,.7], AMBER = [1,.68,.12], MANE = [.9,.87,.78];
+function drawBrute(v, time) {
+  const hs = Math.hypot(v.vx || 0, v.vz || 0), run = clamp(hs / 14, 0, 1), m = v.move, st = v.state, t = v.t || 0, S = 1.5;
+  const on = st === 'wind' || st === 'act', act = st === 'act', k = clamp(t / .2, 0, 1), breathe = Math.sin(time * 2.4) * .025;
+  const w = Math.sin(v.phase || 0);
+  // arm = [swing (negative is forward), sweep, elbow bend]
+  let aL = [.05 + w * run * .9, -.18, -.45], aR = [.05 - w * run * .9, .18, -.45];
+  let lean = .22 + run * .3, crouch = .08 - breathe, twist = 0, lL = v.grounded ? w * run : -.9, lR = v.grounded ? -w * run : .3;
+  if (on && m === 'combo') {
+    const n = v.hits === undefined ? 0 : act ? Math.min(2, v.n ?? (t / .25 | 0)) : 0, s2 = clamp(act ? (t % .25) / .09 : 0, 0, 1);
+    if (n === 0) { aR = [-1.5 * s2 + .5, .15, -1.9 + 1.9 * s2]; aL = [-.9, -.3, -1.7]; twist = .6 - 1.1 * s2; }
+    if (n === 1) { aL = [-1.55, -1.4 + 1.9 * s2, -.8]; aR = [-.8, .3, -1.7]; twist = -.6 + 1.2 * s2; }
+    if (n === 2) { aR = aL = [-3.2 + 2.9 * s2, 0, -.3]; lean = -.2 + 1.0 * s2; crouch = .3 * s2; }
+    lL = -.7; lR = .55;
+  }
+  if (m === 'charge' || (st === 'wind' && (m === 'clap' || m === 'wave'))) { aR = [.9, .5, -1.6]; aL = [-1.1, -.4, -1]; twist = .8; crouch = .22; lL = -.7; lR = .6; }
+  if (on && m === 'punch') { aR = [-1.5, -.1, -.05]; aL = [.8, -.5, -1.3]; twist = -.9 * k; lean = .55; lL = -.9; lR = .8; }
+  if (on && m === 'dash') { lean = .95; aR = [-.5, .5, -2]; aL = [-1.2, -.2, -1.8]; twist = -.35; lL = Math.sin(time * 30) * .9; lR = -lL; }
+  if (on && (m === 'leap' || m === 'slam')) { const down = v.hits; aR = aL = [down ? -.5 : -3.2, 0, -.3]; lean = down ? .9 : -.15; crouch = down ? .45 : 0; lL = -1; lR = down ? .8 : .1; }
+  if (m === 'wave' && act || m === 'throw') { aR = aL = [-3.2 + 2.4 * k, 0, -.2]; lean = -.3 + .9 * k; }
+  if (m === 'clap' && act) { aR = [-1.55, -.35, -.1]; aL = [-1.55, .35, -.1]; lean = .4; }
+  if (on && m === 'quake') { const beat = (t % .42) / .42; aR = aL = [-3.1 + 2.9 * beat, 0, -.2]; lean = -.2 + .9 * beat; crouch = .35 * beat; }
+  if (m === 'coil') { aR = [1.15, .45, -.5]; aL = [1.15, -.45, -.5]; lean = .75; crouch = .56; lL = -1.1; lR = -.7; }
+  if (m === 'fly') {
+    const falling = clamp(-(v.vy || 0) / 35 + .5, 0, 1);
+    aR = [.9 - 4.0 * falling, .45 * (1 - falling), -.4]; aL = [.9 - 4.0 * falling, -.45 * (1 - falling), -.4];
+    lean = .75 - .9 * falling; crouch = .1; lL = -1.1 + .5 * falling; lR = .5 - 1.1 * falling;
+  }
+  if (m === 'land') { aR = [-.45, -.1, -.1]; aL = [.8, -.65, -1.1]; lean = .95; crouch = .55; lL = -1.2; lR = .7; twist = -.25; }
+  if (v.carry) { aR = [-3.0, -.12, -.25]; aL = [-3.0, .12, -.25]; lean = Math.min(lean, .15); twist = 0; }
+  if (st === 'rest') { lean = .5; crouch = .2; aL = [-.3, -.4, -.3]; aR = [-.3, .4, -.3]; }
+
+  const cy = Math.cos(v.yaw), sy = Math.sin(v.yaw), cl = Math.cos(lean), sl = Math.sin(lean), flash = v.hurtT > 0;
+  let tw = 0;
+  const world = (x, y, z) => {
+    const x1 = x * Math.cos(tw) + z * Math.sin(tw), z1 = z * Math.cos(tw) - x * Math.sin(tw);
+    const yy = y - 1, y2 = yy * cl - z1 * sl + 1, z2 = yy * sl + z1 * cl;
+    return [v.x + (x1 * cy + z2 * sy) * S, v.y + y2 * S, v.z + (z2 * cy - x1 * sy) * S];
+  };
+  const box = (x, y, z, bw, bh, bd, col, mat = 0, pitch = 0, turn = 0) => { const p = world(x, y, z); push(p[0], p[1], p[2], flash ? 3 : mat, bw * S, bh * S, bd * S, v.yaw + tw + turn, flash ? [1, .85, .7] : col, pitch + lean); };
+  const c = crouch;
+  for (const [side, a] of [[-1, lL], [1, lR]]) {
+    const bend = .2 + c * 2, ky = 1 - c - Math.cos(a) * .48, kz = -Math.sin(a) * .48, fy = ky - Math.cos(a + bend) * .46, fz = kz - Math.sin(a + bend) * .46;
+    box(side * .34, (1 - c + ky) / 2, kz / 2, .44, .54, .48, CANVAS, 0, a);
+    box(side * .36, (ky + fy) / 2, (kz + fz) / 2, .36, .5, .4, HIDE2, 0, a + bend);
+    box(side * .36, ky, kz + .2, .3, .24, .14, GAUNT, 0, a);
+    box(side * .38, fy + .08, fz + .1, .46, .2, .6, CANVAS);
+  }
+  box(0, 1.04 - c, 0, .82, .3, .54, CANVAS);
+  box(0, 1.17 - c, 0, .88, .12, .58, GAUNT);
+  box(0, 1.17 - c, .3, .2, .16, .05, AMBER, 3);
+  tw = twist * .5;
+  for (const ax of [-.17, .17]) for (let r = 0; r < 3; r++) box(ax, 1.31 + r * .14 - c, .21, .28, .12, .1, HIDE);
+  box(0, 1.45 - c, -.02, .68, .46, .42, HIDE2);
+  tw = twist;
+  box(0, 1.9 - c, -.04, 1.36, .56, .72, HIDE);
+  box(-.33, 1.9 - c, .34, .58, .42, .14, HIDE2); box(.33, 1.9 - c, .34, .58, .42, .14, HIDE2);
+  box(0, 2.2 - c, -.14, .92, .22, .5, HIDE2);                                // traps
+  box(0, 1.95 - c, -.43, .18, .72, .1, MANE);
+  box(.2, 1.84 - c, .42, .05, .46, .02, MANE, 0, 0);                          // old scar
+  box(0, 2.34 - c, .22, .4, .36, .4, HIDE);
+  box(0, 2.46 - c, .42, .44, .1, .1, HIDE2);                                  // heavy brow
+  box(-.1, 2.38 - c, .43, .1, .045, .02, AMBER, 3); box(.1, 2.38 - c, .43, .1, .045, .02, AMBER, 3);
+  box(0, 2.2 - c, .4, .34, .13, .1, HIDE2);
+  box(-.11, 2.2 - c, .46, .06, .11, .05, MANE); box(.11, 2.2 - c, .46, .06, .11, .05, MANE);
+  for (let i = 0; i < 4; i++) box(0, 2.6 - c - i * .035, .32 - i * .13, .11, .18, .14, MANE, 0, -.25);
+  for (const [side, [a, sweep, bend]] of [[-1, aL], [1, aR]]) {
+    const sx = side * .86, cs = Math.cos(sweep), sn = Math.sin(sweep);
+    const put = (y, z, bw, bh, bd, col, mat, pitch) => box(sx + z * sn, y, z * cs, bw, bh, bd, col, mat, pitch, sweep);
+    const top = 2.02 - c, ey = top - Math.cos(a) * .6, ez = -Math.sin(a) * .6, f = a + bend, hy = ey - Math.cos(f) * .62, hz = ez - Math.sin(f) * .62;
+    box(sx, top + .03, -.03, .6, .56, .6, HIDE);                             // shoulder
+    box(side * .98, top + .34, -.03, .42, .12, .5, GAUNT); box(side * 1.02, top + .46, -.03, .12, .18, .12, RIVET);
+    put((top + ey) / 2, ez / 2, .42, .62, .44, HIDE2, 0, a);
+    put((ey + hy) / 2, (ez + hz) / 2, .46, .6, .48, HIDE, 0, f);
+    put(ey + (hy - ey) * .62, ez + (hz - ez) * .62, .56, .36, .58, GAUNT, 0, f);
+    put(ey + (hy - ey) * .5, ez + (hz - ez) * .5, .6, .07, .62, RIVET, 0, f);
+    put(hy - Math.cos(f) * .14, hz - Math.sin(f) * .14, .6, .42, .6, GAUNT, 0, f);
+    put(hy - Math.cos(f) * .34, hz - Math.sin(f) * .34, .52, .09, .5, RIVET, 0, f);
+  }
+  if (v.enraged) for (let i = 0; i < 6; i++) { const a = time * 3 + i * 1.05; push(v.x + Math.sin(a) * 2.4, v.y + .6 + (time * 2.5 + i * .6) % 3.4, v.z + Math.cos(a) * 2.4, 3, .16, .5, .16, a, AMBER); }
 }
 // you, when playing him: translate the player's current move into the same poses
 const MY_TIMES = { combo: .22, dash: .28, wave: .26, whirl: 9, leap: 1.1, rise: .4, rain: .6, blink: .15 };
@@ -1633,17 +2140,26 @@ function drawCinderPlayer(time) {
 }
 
 function drawEnemyEffects(time) {
-  for (const w of waves) for (const roll of [.75, -.75]) {          // a burning X in flight
+  for (const w of waves) if (w.kind === 'rock') push(...w.p, 0, 2.4, 2.1, 2.3, w.life * 9, [.4, .34, .3], w.life * 7);
+  else if (w.kind === 'sickle') { if (foe !== 'hero') drawSickle(w.p, w.life * 22, 1.57, 1.8); }
+  else for (const roll of [.75, -.75]) {          // a burning X in flight
     const pitch = -Math.asin(clamp(w.v[1] / 62, -1, 1));
     push(...w.p, 3, 4.6, .24, .35, w.yaw, EMBER, pitch, roll);
     push(...w.p, 3, 3.6, .1, .45, w.yaw, CORE, pitch, roll);
   }
   for (const d of rain) {                                            // falling blades and their marks
-    const col = d.mine || who !== 'cinder' ? EMBER : FROST.EMBER;
+    const col = d.mine || foe !== who ? EMBER : FROST.EMBER;
     for (let i = 0; i < 8; i++) { const a = i / 8 * 6.283 + time * 4; push(d.x + Math.sin(a) * 3.4, d.floor + .12, d.z + Math.cos(a) * 3.4, 3, 1.1, .1, .22, a, col); }
     if (d.delay <= 0) { push(d.x, d.y + 2, d.z, 3, .34, 4.5, .12, 0, col); push(d.x, d.y + 4.6, d.z, 0, 1, .2, .3, 0, FIRE.ASH); }
   }
   if (E.dead) return;
+  const ground = (x, z, a, len) => push(x, E.y + .15, z, 3, len, .12, .35, a, EMBER);
+  if (E.move === 'clap' && E.state === 'wind') for (const off of [-.55, .55]) for (let d = 3; d < 20; d += 3) ground(E.x + Math.sin(E.yaw + off) * d, E.z + Math.cos(E.yaw + off) * d, E.yaw + off + Math.PI / 2, 1.4);
+  if (E.state === 'wind' && (E.move === 'sphere' || E.move === 'cross' || E.move === 'quake') || E.state === 'act' && E.move === 'quake') {
+    const r = E.state === 'act' ? E.ring : E.move === 'sphere' ? 17 : E.move === 'cross' ? 11 : 24;
+    for (let i = 0; i < 28; i++) { const a = i / 28 * 6.283 + time; ground(E.x + Math.sin(a) * r, E.z + Math.cos(a) * r, a, 1.4); }
+  }
+  if (E.state === 'act' && E.move === 'sphere') { const r = Math.min(17, 4 + E.t * 20); for (let i = 0; i < 90; i++) { const y = 1 - 2 * (i + .5) / 90, ring = Math.sqrt(1 - y * y), a = i * 2.39996 + time * 5; if (E.y + 1.5 + y * r > 0) push(E.x + Math.sin(a) * ring * r, E.y + 1.5 + y * r, E.z + Math.cos(a) * ring * r, 3, r * .09, .16, .16, a + 1.57, [1, .25, .2]); } }
   const marked = E.move === 'leap' && (E.state === 'wind' || E.state === 'act' && !E.hits);
   if (marked) for (let i = 0; i < 18; i++) {                         // where the cleave will land
     const a = i / 18 * Math.PI * 2 + time * 3;
@@ -1671,11 +2187,22 @@ function initLife() {
     for (let n = 0; n < 3; n++) cars.push({ axis, dir, line: k * BLOCK, s: -CITY + (n + rr(.1, .9)) * (CITY * 2 / 3), v: 0, color: pick(CAR_COLORS),
       wreck: 0, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0, pitch: 0, roll: 0, spin: 0 });
   for (const c of cars) placeCar(c);
-  for (let i = 0; i < 320; i++) {                            // crowds are thickest near the middle
-    const line = Math.round(rr(-3.4, 3.4)) * BLOCK + (Math.random() < .5 ? -8 : 8), axis = i & 1, at = rr(-170, 170);
-    civs.push({ axis, line, x: axis ? line : at, z: axis ? at : line, y: 0, dir: Math.random() < .5 ? 1 : -1, pace: rr(1.6, 3),
-      panic: 0, down: 0, vx: 0, vz: 0, yaw: 0, step: rr(0, 6), shirt: pick(SHIRTS), skin: pick(SKINS) });
-  }
+  for (let i = 0; i < 320; i++) civs.push(newCiv(i & 1));
+}
+const CORPSE_TIME = 22;
+function newCiv(axis) {                                      // crowds are thickest near the middle
+  const line = Math.round(rr(-3.4, 3.4)) * BLOCK + (Math.random() < .5 ? -8 : 8), at = rr(-170, 170);
+  return { axis, line, x: axis ? line : at, z: axis ? at : line, y: 0, dir: Math.random() < .5 ? 1 : -1, pace: rr(1.6, 3),
+    panic: 0, dead: 0, vx: 0, vy: 0, vz: 0, yaw: 0, step: rr(0, 6), shirt: pick(SHIRTS), skin: pick(SKINS) };
+}
+const BLOOD = [.45, .015, .01];
+function killCiv(p, dx = 0, dz = 0) {
+  if (p.dead) return;
+  const l = Math.hypot(dx, dz) || 1;
+  Object.assign(p, { dead: CORPSE_TIME, panic: 0, held: false, flung: false, lethal: false, yaw: Math.atan2(dx / l, dz / l), seed: Math.random() * 6.283 });
+  for (let i = 0; i < 22; i++)
+    debris(p.x + rr(-.3, .3), (p.y || 0) + rr(.5, 1.6), p.z + rr(-.3, .3), rr(.1, .3), BLOOD, dx / l * rr(0, 9) + rr(-4, 4), rr(1, 10), dz / l * rr(0, 9) + rr(-4, 4), rr(1.2, 3));
+  sfx(.35, 350, .15);
 }
 function placeCar(c) {                                       // right-hand lanes, 3.5 m off the road's centre
   if (c.axis) { c.x = c.line - c.dir * 3.5; c.z = c.s; c.yaw = c.dir > 0 ? 0 : Math.PI; }
@@ -1683,6 +2210,7 @@ function placeCar(c) {                                       // right-hand lanes
   c.y = 0;
 }
 function wreckCar(c, x, z, force) {
+  if (c.held) return;
   if (c.wreck > 0) { c.vy = Math.max(c.vy, force * .5); return; }
   const dx = c.x - x, dz = c.z - z, d = Math.hypot(dx, dz) || 1;
   c.wreck = 14;
@@ -1695,11 +2223,12 @@ function disturb(x, y, z, r) {
   for (const c of cars) if (Math.hypot(c.x - x, c.y + 1 - y, c.z - z) < r + 2) wreckCar(c, x, z, 10 + r * 1.6);
   if (y - r > 45) return;
   for (const p of civs) {
+    if (p.held || p.flung || p.dead) continue;
     const dx = p.x - x, dz = p.z - z, d = Math.hypot(dx, dz);
     if (d > r + 22) continue;
     if (p.panic <= 0 || d < r + 6) { p.vx = dx / (d || 1); p.vz = dz / (d || 1); }
     p.panic = 7;
-    if (d < r + 1.5 && y < r + 4 && p.down <= 0) p.down = 1.8;   // knocked over, gets back up
+    if (d < r + 1.5 && y < r + 4) killCiv(p, dx, dz);
   }
 }
 
@@ -1712,6 +2241,17 @@ function updateCars(dt) {
     (lanes.get(key) || lanes.set(key, []).get(key)).push(c);
   }
   for (const c of cars) {
+    if (c.held) continue;
+    if (c.flung) {                                              // a thrown car blows up on whatever it meets
+      const struck = !E.dead && Math.hypot(E.x - c.x, E.y + 1.5 - c.y, E.z - c.z) < 4;
+      if (struck || c.y <= 0 && c.vy <= 0 || hit(c.x - 1.4, c.y + .3, c.z - 1.4, c.x + 1.4, c.y + 1.8, c.z + 1.4)) {
+        c.flung = false;
+        if (struck) { E.inv = 0; damageEnemy(45); E.stun = .5; E.vx = c.vx * .3; E.vz = c.vz * .3; }
+        byEnemy = true; carve(c.x, c.y + 1, c.z, 6, 26); byEnemy = false;
+        dust(c.x, c.y, c.z, 30, 16); cam.shake = Math.max(cam.shake, .8); sfx(.9, 350, .7);
+        c.vx *= .15; c.vz *= .15; c.vy = Math.abs(c.vy) * .15 + 6;
+      }
+    }
     if (c.wreck > 0) {
       c.wreck -= dt; c.vy -= 32 * dt;
       c.x = clamp(c.x + c.vx * dt, -CITY, CITY); c.z = clamp(c.z + c.vz * dt, -CITY, CITY); c.y += c.vy * dt;
@@ -1728,7 +2268,7 @@ function updateCars(dt) {
     let stop = false;
     for (const o of lanes.get(c.axis + ':' + c.line + ':' + c.dir)) {
       const gap = (o.s - c.s) * c.dir;
-      if (o !== c && !o.wreck && gap > 0 && gap < 8) { stop = true; break; }
+      if (o !== c && !o.wreck && !o.held && gap > 0 && gap < 8) { stop = true; break; }
     }
     const nextCross = c.dir > 0 ? Math.ceil((c.s + 9) / BLOCK) * BLOCK : Math.floor((c.s - 9) / BLOCK) * BLOCK;
     const toLine = (nextCross - c.s) * c.dir - 9;
@@ -1748,6 +2288,7 @@ function updateCars(dt) {
 // cars are solid: stand on the roof, get shoved by the sides, or smash through at speed
 function collideCars() {
   for (const c of cars) {
+    if (c.held) continue;
     const along = Math.abs(Math.sin(c.yaw)) > .5, hx = (along ? 2.3 : 1.1) + .45, hz = (along ? 1.1 : 2.3) + .45;
     const dx = P.x - c.x, dz = P.z - c.z;
     if (Math.abs(dx) >= hx || Math.abs(dz) >= hz || P.y >= c.y + 1.75 || P.y + P.h <= c.y) continue;
@@ -1759,13 +2300,36 @@ function collideCars() {
 }
 
 function updateCivs(dt) {
-  for (const p of civs) {
+  for (let i = 0; i < civs.length; i++) {
+    const p = civs[i];
+    if (p.dead) {
+      if (p.y > 0) { p.vy -= 30 * dt; p.y = Math.max(0, p.y + p.vy * dt); }
+      if ((p.dead -= dt) <= 0) {
+        let fresh;
+        for (let tries = 0; tries < 12; tries++) { fresh = newCiv(p.axis); if (Math.hypot(fresh.x - P.x, fresh.z - P.z) > 100) break; }
+        civs[i] = fresh;
+      }
+      continue;
+    }
+    if (p.held) continue;
+    if (p.flung) {                                              // tumbles, lands, picks themselves up and runs
+      p.vy -= 30 * dt;
+      const nx = p.x + p.vx * dt, nz = p.z + p.vz * dt;
+      if (Math.abs(nx) < CITY - 4 && Math.abs(nz) < CITY - 4 && !hit(nx - .4, Math.max(.1, p.y), nz - .4, nx + .4, Math.max(.1, p.y) + 1, nz + .4)) { p.x = nx; p.z = nz; }
+      else { if (p.lethal) killCiv(p, -p.vx, -p.vz); p.vx = p.vz = 0; }       // thrown into a wall
+      p.y = Math.max(0, p.y + p.vy * dt);
+      if (p.y === 0 && !p.dead) {
+        // thrown or dropped from a height is fatal; being set down gently is not
+        if (p.lethal || p.vy < -18) killCiv(p, p.vx, p.vz);
+        else { const l = Math.hypot(p.vx, p.vz) || 1; p.flung = false; p.panic = 8; p.vx /= l; p.vz /= l; p.vy = 0; }
+      }
+      continue;
+    }
     if (Math.abs(p.x - P.x) > 220 || Math.abs(p.z - P.z) > 220) continue;     // far away: frozen
     if (!E.dead && E.awake && p.panic < 2 && Math.hypot(p.x - E.x, p.z - E.z) < 18 && E.y < 12) {
       const d = Math.hypot(p.x - E.x, p.z - E.z) || 1; p.vx = (p.x - E.x) / d; p.vz = (p.z - E.z) / d; p.panic = 5;
     }
-    if (p.down > 0) { p.down -= dt; continue; }
-    let mx, mz, pace;
+        let mx, mz, pace;
     if (p.panic > 0) { p.panic -= dt; mx = p.vx; mz = p.vz; pace = 9; }
     else {                                                       // stroll along the pavement, drifting back to it
       const off = clamp(p.line - (p.axis ? p.x : p.z), -1, 1);
@@ -1809,8 +2373,22 @@ function buildLife() {
     const far = Math.hypot(p.x - P.x, p.z - P.z);
     if (far > 150) continue;
     const sy = Math.sin(p.yaw), cy = Math.cos(p.yaw);
-    const part = (side, up, fwd, w, h, d, col, pitch = 0) => add(p.x + side * cy + fwd * sy, up, p.z - side * sy + fwd * cy, 0, w, h, d, p.yaw, col, pitch);
-    if (p.down > 0) { part(0, .2, 0, .55, .32, 1.1, p.shirt); part(0, .2, .75, .34, .3, .34, p.skin); part(0, .16, -.85, .42, .24, .75, TROUSERS); continue; }
+    const part = (side, up, fwd, w, h, d, col, pitch = 0) => add(p.x + side * cy + fwd * sy, up + (p.y || 0), p.z - side * sy + fwd * cy, 0, w, h, d, p.yaw, col, pitch);
+    if (p.dead) {
+      const age = CORPSE_TIME - p.dead, spread = clamp(.3 + age * .5, .3, 1), sink = Math.max(0, 2 - p.dead) * .3;
+      const flat = (ox, oz, w, d, yaw, h = .03) => add(p.x + ox, .025 - sink * .1, p.z + oz, 0, w * (1 - sink), h, d * (1 - sink), yaw, BLOOD);
+      if (!p.y) {                                              // pool grows under the body, with splashes around it
+        flat(0, 0, 1.7 * spread, 1.3 * spread, p.seed);
+        flat(0, 0, 1.1 * spread, 2.1 * spread, p.seed + .8, .034);
+        if (far < 90) for (let i = 0; i < 6; i++) { const a = p.seed + i * 1.9, r = .8 + (i * .37 % 1.3); flat(Math.sin(a) * r, Math.cos(a) * r, .12 + (i % 3) * .13, .1 + (i % 2) * .2, a); }
+      }
+      const lie = (side, up, fwd, w, h, d, col) => part(side, up - sink, fwd, w, h, d, col);
+      lie(0, .2, 0, .55, .32, 1.1, p.shirt); lie(.04, .21, .75, .34, .3, .34, p.skin);
+      lie(-.14, .15, -.88, .2, .22, .75, TROUSERS); lie(.2, .15, -.8, .2, .22, .72, TROUSERS);
+      lie(.5, .12, .25, .5, .13, .15, p.shirt); lie(0, .37, .18, .3, .03, .4, BLOOD);
+      continue;
+    }
+    if (p.held || p.flung) { part(0, .2, 0, .55, .32, 1.1, p.shirt); part(0, .2, .75, .34, .3, .34, p.skin); part(0, .16, -.85, .42, .24, .75, TROUSERS); continue; }
     const run = p.panic > 0, swing = Math.sin(p.step) * (run ? .9 : .45);
     if (far < 80) for (const side of [-.13, .13]) {
       const a = side < 0 ? swing : -swing;
@@ -1838,7 +2416,7 @@ function sfx(vol, freq, dur) {
   const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
   s.buffer = noise; f.type = 'lowpass';
   f.frequency.setValueAtTime(freq * 2, lastSfx); f.frequency.exponentialRampToValueAtTime(freq * .2, lastSfx + dur);
-  g.gain.setValueAtTime(vol * .5, lastSfx); g.gain.exponentialRampToValueAtTime(.001, lastSfx + dur);
+  g.gain.setValueAtTime(vol * .5 * settings.volume + .0001, lastSfx); g.gain.exponentialRampToValueAtTime(.001, lastSfx + dur);
   s.connect(f).connect(g).connect(ac.destination);
   s.start(); s.stop(lastSfx + dur);
 }
@@ -1846,15 +2424,18 @@ function sfx(vol, freq, dur) {
 // ───────────────────────── character (boxes) ─────────────────────────
 const dynData = new Float32Array(MAX_DYN * 12);
 let drawAlpha = 1;
+let preview = null;                       // { kind, ndc }: show one fighter full body for the menus
 let dynCount = 0;
-const push = (x, y, z, m, sx, sy, sz, yaw, c, pitch = 0, roll = 0) => { if (dynCount < MAX_DYN) inst(dynData, 12 * dynCount++, x, y, z, roll ? m + Math.atan2(Math.sin(roll), Math.cos(roll)) / 6.2832 * .998 + .5 : m, sx, sy, sz, yaw, c, pitch); };
+let tint = false;                           // mirror matches recolour the rival
+const push = (x, y, z, m, sx, sy, sz, yaw, c, pitch = 0, roll = 0) => { if (tint) c = [c[2] * .8 + .12, c[1] * .45, c[0] * .45]; if (dynCount < MAX_DYN) inst(dynData, 12 * dynCount++, x, y, z, roll ? m + Math.atan2(Math.sin(roll), Math.cos(roll)) / 6.2832 * .998 + .5 : m, sx, sy, sz, yaw, c, pitch); };
 
 const NAVY = [.13,.19,.34], PLATE = [.4,.46,.58], BLACK = [.06,.07,.1], SKIN = [.7,.5,.4];
 const HAIR = [.86,.89,.96], BLUE = [.12,.38,.95], GLOW = [.3,.78,1];
 const STEEL = [.68,.7,.73], IRON = [.34,.36,.4], DARKSTEEL = [.2,.22,.26];
 
-const pose = { twist: 0, swL: 0, swR: 0, roll: 0, wrist: 0, lean: 0, drop: 0, crouch: 0, aL: 0, aR: 0, eL: 0, eR: 0, lL: 0, lR: 0, kL: 0, kR: 0, tail: 0, t: 0 };
-let butt = [0, 1, 0], rest = [0, .5, 0];   // chain ends: sickle pommel, and where the ball hangs when idle
+let pose = { twist: 0, swL: 0, swR: 0, roll: 0, wrist: 0, lean: 0, drop: 0, crouch: 0, aL: 0, aR: 0, eL: 0, eR: 0, lL: 0, lR: 0, kL: 0, kR: 0, tail: 0, t: 0 };
+let butt = [0, 1, 0], rest = [0, .5, 0];
+let altPose = null, heroBlank = null;      // used to pose a second KESTREL (rival or menu preview)   // chain ends: sickle pommel, and where the ball hangs when idle
 
 // the pose we want this frame: arm/leg angles (negative = forward), elbows and knees
 // one-shot attack poses. k runs 0 → 1: a fast strike, then the follow-through settles
@@ -2171,7 +2752,16 @@ function buildFallers() {
 function buildDynamic(time) {
   dynCount = 0;
   push(0, -1, 0, 2, HALF * BLOCK * 2 + 60, 2, HALF * BLOCK * 2 + 60, 0, [.2,.21,.23]);
-  if (who === 'cinder') { drawCinderPlayer(time); drawEnemy(time, drawAlpha); drawEnemyEffects(time); return; }
+  if (preview) {
+    drawModel(preview.kind, { x: 0, y: 0, z: 0, yaw: Math.PI + (preview.still ? .35 : Math.sin(time * .7) * .6), vx: 0, vz: 0, vy: 0, phase: 0, grounded: true, state: 'idle', move: 'combo', t: 0, hits: 0 }, time, false);
+    return;
+  }
+  if (who !== 'hero') {
+    if (who === 'cinder') drawCinderPlayer(time); else drawBrutePlayer(time);
+    for (const t of thrown) push(t.p[0], t.p[1], t.p[2], 0, 2.6, 2.2, 2.6, t.spin * .7, t.color, t.spin);
+    if (P.held?.type === 'rock') push(...holdPoint(), 0, 2.8, 2.3, 2.7, P.yaw, P.held.color);
+    drawEnemy(time, drawAlpha); drawEnemyEffects(time); return;
+  }
   const c = P.chain, mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
   const st = P.storm, cf = P.cross;
   const spin = st ? spherePoint(st.a, .7, st.r) : cf ? crossTip(1) : P.orbit ? P.orbit.p : null;
@@ -2257,8 +2847,8 @@ function updateCamera(dt, time, aspect) {
   cam.low += ((P.h < H ? .85 : 0) - cam.low) * ease(12);
   const strafe = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0);
   cam.roll += ((P.slide ? -.045 : 0) + strafe * .012 - cam.roll) * ease(10);
-  const target = [P.x, P.y + (who === 'cinder' ? 4.3 : 2.65) - cam.dip - cam.low, P.z];
-  const want = (who === 'cinder' ? 10 : 6) + Math.min(2.5, speed * .045) + (P.chain ? 2.5 : 0) + (P.storm ? 22 : P.cross ? 5 : 0);
+  const target = [P.x, P.y + ROSTER[who].camH - cam.dip - cam.low, P.z];
+  const want = ROSTER[who].camD + (P.leaping ? 5 : 0) + Math.min(2.5, speed * .045) + (P.chain ? 2.5 : 0) + (P.storm ? 22 : P.cross ? 5 : 0);
   let free = want;
   for (let t = .6; t <= want; t += .5)
     if (hitPoint(target[0] - look[0]*t, Math.max(.4, target[1] - look[1]*t), target[2] - look[2]*t, .35)) { free = Math.max(1.5, t - .6); break; }
@@ -2271,22 +2861,30 @@ function updateCamera(dt, time, aspect) {
   cam.pos = eye;
   cam.fov += (74 + clamp(speed - 14, 0, 50) * .42 - cam.fov) * ease(8);
 
-  const f = look, r0 = norm(cross(f, [0, 1, 0])), u0 = cross(r0, f), cr = Math.cos(cam.roll), sr = Math.sin(cam.roll);
+  setView(eye, look, cam.roll, cam.fov, time, aspect, [P.x, P.y, P.z]);
+}
+function setView(eye, f, roll, fov, time, aspect, focus) {
+  const r0 = norm(cross(f, [0, 1, 0])), u0 = cross(r0, f), cr = Math.cos(roll), sr = Math.sin(roll);
   const r = r0.map((v, i) => v * cr + u0[i] * sr), u = u0.map((v, i) => v * cr - r0[i] * sr);
-  const t = Math.tan(cam.fov * Math.PI / 360), near = .2, far = 1500;
+  const t = Math.tan(fov * Math.PI / 360), near = .2, far = 1500;
   const sx = 1 / (t * aspect), sy = 1 / t, a = far / (far - near), b = -near * a;
   // view-projection, column-major, depth 0..1
   const cols = [0, 1, 2].map(i => [r[i] * sx, u[i] * sy, f[i] * a, f[i]]);
   cols.push([-dot(r, eye) * sx, -dot(u, eye) * sy, -dot(f, eye) * a + b, -dot(f, eye)]);
   ubo.set(cols.flat(), 0);
   ubo.set([...eye, time], 16);
-  ubo.set([P.x, P.y, P.z, 0], 20);
+  ubo.set([...focus, 0], 20);
   ubo.set([r[0]*t*aspect, r[1]*t*aspect, r[2]*t*aspect, 0], 24);
   ubo.set([u[0]*t, u[1]*t, u[2]*t, 0], 28);
   ubo.set([...f, 0], 32);
   ubo.set(craters, 36);
 }
-
+// frame a fighter so he stands at screen position ndc (-1 left … 1 right)
+function previewCamera(time, aspect) {
+  const [d, mid] = { hero: [5.4, 1.2], cinder: [8.2, 1.85], brute: [10.8, 2.2] }[preview.kind], fov = 42;
+  const f = norm([0, -.04, 1]), r = norm(cross(f, [0, 1, 0])), side = preview.ndc * d * Math.tan(fov * Math.PI / 360) * aspect;
+  setView([0, 1, 2].map(i => [0, mid, 0][i] - f[i] * d - r[i] * side), f, 0, fov, time, aspect, [0, 0, 0]);
+}
 // ───────────────────────── shaders ─────────────────────────
 const COMMON = /* wgsl */`
 struct U { vp: mat4x4f, eye: vec4f, player: vec4f, right: vec4f, up: vec4f, fwd: vec4f, craters: array<vec4f,16> };
@@ -2551,8 +3149,8 @@ function render(dt, time, alpha = 1) {
   P.x = P.px + (real[0] - P.px) * alpha; P.y = P.py + (real[1] - P.py) * alpha; P.z = P.pz + (real[2] - P.pz) * alpha;
   buildDynamic(time);
   buildFallers();
-  buildLife();
-  updateCamera(dt, time, canvas.width / canvas.height);
+  if (preview) lifeCount = fallCount = 0; else buildLife();
+  if (preview) previewCamera(time, canvas.width / canvas.height); else updateCamera(dt, time, canvas.width / canvas.height);
   [P.x, P.y, P.z] = real;
   flushDebris();
   device.queue.writeBuffer(dynBuf, 0, dynData, 0, dynCount * 12);
@@ -2588,71 +3186,250 @@ function render(dt, time, alpha = 1) {
 
 // ───────────────────────── events + loop ─────────────────────────
 const locked = () => document.pointerLockElement === canvas;
-const HERO_HELP = $('help').innerHTML;
-const CINDER_HELP = `<b>CINDER</b>   (H hides this)
-<b>MOVE</b>  WASD, mouse, Shift sprint
-Space      jump / double jump / hold to glide
-C          slide;  E  dodge dash
-
-<b>BLADES</b>
-LMB        three-cut combo
-LMB hold   FIRE WHEEL (you can still move)
-RMB        EMBER DASH: cut straight through
-F          COMET CLEAVE onto your aim
-G          CROSS FLARE
-T          PHOENIX RISE (launches)
-Z          FLICKER (behind your rival if near)
-Q          EMBER RAIN (full style bar)
-
-1 / 2 switch fighter   K rematch
-R rebuild city   O quality   P 60 fps cap   B debug`;
-function chooseFighter(name) {
-  if (who === name) return;
-  who = name;
-  const keep = { x: P.x, y: P.y, z: P.z, px: P.x, py: P.y, pz: P.z };
-  resetPlayer(); Object.assign(P, keep); resetEnemy();
-  $('help').innerHTML = who === 'cinder' ? CINDER_HELP : HERO_HELP;
-  say(who === 'cinder' ? 'PLAYING: CINDER  ·  rival: RIME' : 'PLAYING: KUSARIGAMA  ·  rival: CINDER', 2.2);
+// actions are what the game asks about; bindings say which physical input drives each
+const ACTIONS = [['KeyW', 'Move forward'], ['KeyS', 'Move back'], ['KeyA', 'Move left'], ['KeyD', 'Move right'], ['ShiftLeft', 'Sprint'], ['Space', 'Jump'],
+  ['KeyC', 'Slide / crouch'], ['KeyE', 'Dash'], ['mouse0', 'Attack'], ['mouse2', 'Mobility skill'], ['KeyR', 'Reel in (chain)'], ['KeyF', 'Slam'], ['KeyG', 'Ranged / grab'],
+  ['KeyT', 'Skill 1'], ['KeyZ', 'Skill 2'], ['KeyX', 'Skill 3'], ['KeyQ', 'Ultimate']];
+const defaultBinds = () => Object.fromEntries(ACTIONS.map(([id]) => [id, id]));
+const SET_KEY = 'skybreak.settings', SAVE_KEY = 'skybreak.save';
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } },
+};
+const saved0 = store.get(SET_KEY) || {};
+const settings = { quality: 0, cap60: true, volume: 1, fullscreen: true, debug: false, slow: 1, help: true, ...saved0, binds: { ...defaultBinds(), ...saved0.binds } };
+function applySettings() {
+  quality = clamp(settings.quality | 0, 0, QUALITY.length - 1); cap60 = !!settings.cap60;
+  debug = !!settings.debug; timeScale = debug ? settings.slow : 1;
+  store.set(SET_KEY, settings);
 }
-canvas.addEventListener('mousedown', e => {
-  initAudio();
-  if (!locked()) {   // raw input (no OS mouse acceleration) where supported
-    canvas.requestPointerLock({ unadjustedMovement: true })?.catch(() => canvas.requestPointerLock());
-    return;
+const KEY_NAMES = { mouse0: 'Left click', mouse1: 'Middle click', mouse2: 'Right click', mouse3: 'Mouse 4', mouse4: 'Mouse 5', Space: 'Space',
+  ShiftLeft: 'L Shift', ShiftRight: 'R Shift', ControlLeft: 'L Ctrl', ControlRight: 'R Ctrl', AltLeft: 'L Alt', AltRight: 'R Alt' };
+const keyName = code => KEY_NAMES[code] || code.replace(/^Key|^Digit/, '').replace(/^Numpad/, 'Num ').replace(/^Arrow/, '');
+const bound = action => keyName(settings.binds[action]);
+
+let mode = 'menu', screen = 'main', pickWho = 'hero', pickFoe = 'cinder', rebinding = null, optionsFrom = 'main', notice = '', swallowClick = false;
+const thumbs = {};
+
+function helpHTML() {
+  const line = (k, t) => k.padEnd(13) + t + '\n';
+  let h = '<b>' + ROSTER[who].name + '</b>   Esc: pause\n';
+  h += line(['KeyW', 'KeyA', 'KeyS', 'KeyD'].map(bound).join(' '), 'move');
+  for (const a of ['ShiftLeft', 'Space', 'KeyC', 'KeyE']) h += line(bound(a), { ShiftLeft: 'sprint', Space: 'jump / glide', KeyC: 'slide', KeyE: 'dash' }[a]);
+  h += '\n';
+  for (const [a, name] of ROSTER[who].moves) h += line(bound(a), name);
+  return h;
+}
+
+// ── screens ──
+const btn = (label, act, extra = '') => `<button class="wide ${extra}" data-act="${act}">${label}</button>`;
+function selectScreen(which) {
+  const pick = which === 'who' ? pickWho : pickFoe, r = ROSTER[pick];
+  const cards = Object.keys(ROSTER).map(k => `<button class="card ${k === pick ? 'sel' : ''}" data-act="card" data-id="${k}"><img alt="" src="${thumbs[k] || ''}">${ROSTER[k].name}</button>`).join('');
+  const stats = ['Power', 'Speed', 'Reach', 'Toughness'].map((n, i) => `<div class="stat"><span>${n}</span>${[1, 2, 3, 4, 5].map(v => `<i class="${v <= r.stats[i] ? 'on' : ''}"></i>`).join('')}</div>`).join('');
+  const moves = r.moves.map(([a, name, what]) => `<div class="mv"><b>${bound(a)}</b><div>${name}<small>${what}</small></div></div>`).join('');
+  return `<div class="pane left"><h2>${which === 'who' ? 'CHOOSE YOUR FIGHTER' : 'CHOOSE YOUR RIVAL'}</h2>
+    <p class="sub">${which === 'who' ? 'Step 1 of 2' : 'Step 2 of 2 · you are ' + ROSTER[pickWho].name + (pick === pickWho ? ' · mirror match' : '')}</p>
+    <div class="grid">${cards}</div>${btn(which === 'who' ? 'Confirm fighter ▸' : 'Start match ▸', which === 'who' ? 'toFoe' : 'start', 'go')}${btn('◂ Back', 'back')}</div>
+    <div class="pane right"><h2>${r.name}</h2><p class="sub">${r.role}</p><p>${r.desc}</p>${stats}<h2 style="margin-top:16px">MOVES</h2>${moves}</div>`;
+}
+const SCREENS = {
+  main() {
+    const sv = store.get(SAVE_KEY);
+    return `<div class="pane title"><h1>SKYBREAK</h1><p class="sub">Movement · destruction · duels</p>
+      ${btn('New Game', 'new', 'go')}${btn('Load Game' + (sv && ROSTER[sv.who] ? `<br><small>${ROSTER[sv.who].name} vs ${ROSTER[sv.foe].name} · ${sv.when}</small>` : '<br><small>no saved game</small>'), 'load').replace('data-act="load"', 'data-act="load"' + (sv ? '' : ' disabled'))}
+      ${btn('Options', 'options')}${btn('Exit', 'exit')}<p class="sub">${notice}${integrated ? '<br>Running on the integrated GPU. Set your browser to High performance in Windows graphics settings for smoother play.' : ''}</p></div>`;
+  },
+  who: () => selectScreen('who'),
+  foe: () => selectScreen('foe'),
+  pause: () => `<div class="pane center"><h2>PAUSED</h2><p class="sub">${ROSTER[who].name} vs ${foeName()}${notice ? ' · ' + notice : ''}</p>
+    ${btn('Resume', 'resume', 'go')}${btn('Save game', 'save')}${btn('Rematch (rival returns in front of you)', 'rematch')}${btn('Rebuild city', 'rebuild')}${btn('Options', 'options')}${btn('Main menu', 'main')}</div>`,
+  options() {
+    const row = (label, ctl) => `<div class="row"><span>${label}</span>${ctl}</div>`;
+    const tog = (key, label) => row(label, `<button data-act="toggle" data-id="${key}">${settings[key] ? 'On' : 'Off'}</button>`);
+    return `<div class="pane center"><h2>OPTIONS</h2>
+      ${row('Graphics quality', `<button data-act="quality">${QUALITY[settings.quality][0]}</button>`)}${tog('cap60', 'Steady 60 fps cap')}
+      ${row('Sound volume', `<button data-act="volume">${Math.round(settings.volume * 100)}%</button>`)}${tog('help', 'On-screen controls list')}
+      ${tog('fullscreen', 'Fullscreen, block browser shortcuts')}${tog('debug', 'Debug mode (no damage, full style)')}
+      ${row('Debug slow motion', `<button data-act="slow" ${settings.debug ? '' : 'disabled'}>x${settings.slow}</button>`)}
+      <p class="sub">Outside fullscreen the browser keeps shortcuts such as Ctrl+W. Avoid binding Ctrl there.</p>
+      ${btn('Key bindings ▸', 'keys')}${btn('◂ Back', 'back')}</div>`;
+  },
+  keys: () => `<div class="pane center"><h2>KEY BINDINGS</h2><p class="sub">${rebinding ? 'Press a key or mouse button. Esc cancels.' : 'Click an action to change it. Taken inputs swap. Esc is always pause.'}</p>
+    ${ACTIONS.map(([id, label]) => `<div class="row"><span>${label}</span><button data-act="bind" data-id="${id}">${rebinding === id ? '…' : bound(id)}</button></div>`).join('')}
+    ${btn('Reset to defaults', 'resetKeys')}${btn('◂ Back', 'back')}</div>`,
+  exit: () => `<div class="pane center"><h2>GOODBYE</h2><p>Your browser does not let a page close a tab you opened yourself. You can close this tab now.</p>${btn('◂ Back to the menu', 'main')}</div>`,
+};
+function show(name) {
+  screen = name;
+  const menu = $('menu'), keep = menu.querySelector('.pane')?.scrollTop;
+  menu.innerHTML = name ? SCREENS[name]() : '';
+  if (name === 'keys' && keep) menu.querySelector('.pane').scrollTop = keep;
+  document.body.classList.toggle('inmenu', mode === 'menu');
+  // which fighter stands behind this screen
+  preview = mode !== 'menu' ? null : name === 'who' ? { kind: pickWho, ndc: -.08 } : name === 'foe' ? { kind: pickFoe, ndc: -.08 } : { kind: pickWho, ndc: .4 };
+}
+
+// ── matches ──
+function setMatch(a, b) {
+  who = a; foe = b; preview = null;
+  resetWorld(); waves = []; rain = [];
+  $('help').innerHTML = helpHTML();
+}
+function pause() {
+  if (mode !== 'play') return;
+  mode = 'pause'; notice = ''; cam.shake = 0; rumble = 0;
+  keys.clear(); pressed.clear(); released.clear(); P.charge = -1;
+  if (locked()) document.exitPointerLock();
+  show('pause');
+}
+function capture() {
+  if (settings.fullscreen && !document.fullscreenElement)
+    document.documentElement.requestFullscreen?.().then(() => navigator.keyboard?.lock?.()).catch(() => {});
+  const req = canvas.requestPointerLock({ unadjustedMovement: true });
+  req?.catch(() => canvas.requestPointerLock()?.catch?.(() => {}));
+}
+function resume() {
+  mode = 'play'; show(null);
+  $('help').innerHTML = helpHTML(); $('help').style.display = settings.help ? '' : 'none';
+  $('msg').style.display = locked() ? 'none' : 'block';
+  initAudio(); capture();
+}
+function toMain() {
+  mode = 'menu'; notice = '';
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  resetWorld(); show('main');
+}
+function startMatch(a, b) {
+  setMatch(a, b); resume();
+  say(ROSTER[who].name + '  vs  ' + foeName(), 2.4);
+}
+
+// ── save / load ──
+const pack = a => { const out = []; for (const v of a) { const x = v === 1 ? 1 : 0; if (out.length && out[out.length - 2] === x) out[out.length - 1]++; else out.push(x, 1); } return out; };
+function saveGame() {
+  const city = [];
+  buildings.forEach((b, i) => { if (b.vox) city.push([i, pack(b.vox)]); });
+  return store.set(SAVE_KEY, { v: 1, who, foe, when: new Date().toLocaleString(), P: [P.x, P.y, P.z, P.hp, P.style, cam.yaw],
+    E: [E.x, E.y, E.z, E.hp, E.awake, E.dead, E.enraged], city });
+}
+function loadGame() {
+  const d = store.get(SAVE_KEY);
+  if (!d || d.v !== 1 || !ROSTER[d.who] || !ROSTER[d.foe]) return false;
+  setMatch(d.who, d.foe);
+  for (const [i, runs] of d.city) {
+    const b = buildings[i];
+    if (!b) continue;
+    b.vox = new Uint8Array(b.nx * b.ny * b.nz);
+    let o = 0;
+    for (let k = 0; k < runs.length; k += 2) { b.vox.fill(runs[k], o, o + runs[k + 1]); o += runs[k + 1]; }
+    b.dirty = true;
   }
-  press('mouse' + e.button);
+  cityDirty = true;
+  const [x, y, z, hp, st, yaw] = d.P;
+  Object.assign(P, { x, y, z, px: x, py: y, pz: z, hp, style: st, grounded: false }); cam.yaw = yaw;
+  const [ex, ey, ez, ehp, awake, dead, enraged] = d.E;
+  Object.assign(E, { x: ex, y: ey, z: ez, px: ex, py: ey, pz: ez, hp: ehp, awake, dead, enraged });
+  return true;
+}
+
+// ── menu clicks ──
+const ACT = {
+  new() { pickWho = 'hero'; show('who'); },
+  card(id) { if (screen === 'who') pickWho = id; else pickFoe = id; show(screen); },
+  toFoe() { if (pickFoe === pickWho) pickFoe = Object.keys(ROSTER).find(k => k !== pickWho); show('foe'); },
+  start() { startMatch(pickWho, pickFoe); },
+  load() { if (loadGame()) resume(); else { notice = 'That save could not be read.'; show('main'); } },
+  options() { optionsFrom = screen; show('options'); },
+  exit() { applySettings(); window.close(); show('exit'); },
+  keys() { show('keys'); },
+  back() {
+    rebinding = null;
+    if (screen === 'keys') show('options');
+    else if (screen === 'options') show(optionsFrom);
+    else if (screen === 'foe') show('who');
+    else show('main');
+  },
+  resume, main: toMain,
+  save() { notice = saveGame() ? 'Game saved' : 'Could not save (browser storage unavailable)'; show('pause'); },
+  rematch() {
+    resetEnemy();
+    const x = P.x + Math.sin(cam.yaw) * 18, z = P.z + Math.cos(cam.yaw) * 18;
+    Object.assign(E, { x, z, y: P.y, px: x, pz: z, py: P.y, awake: true, cd: 1.4 }); P.hp = 100; resume();
+  },
+  rebuild() { resetWorld(); resume(); },
+  toggle(id) { settings[id] = !settings[id]; applySettings(); show('options'); },
+  quality() { settings.quality = (settings.quality + 1) % QUALITY.length; applySettings(); show('options'); },
+  volume() { settings.volume = settings.volume >= 1 ? 0 : settings.volume + .25; applySettings(); show('options'); },
+  slow() { settings.slow = settings.slow === 1 ? .3 : settings.slow === .3 ? .08 : 1; applySettings(); show('options'); },
+  bind(id) { rebinding = id; show('keys'); },
+  resetKeys() { settings.binds = defaultBinds(); rebinding = null; applySettings(); show('keys'); },
+};
+$('menu').addEventListener('click', e => {
+  if (swallowClick) { swallowClick = false; return; }
+  const b = e.target.closest('[data-act]');
+  if (b && !b.disabled) { initAudio(); ACT[b.dataset.act](b.dataset.id); }
 });
-addEventListener('mouseup', e => release('mouse' + e.button));
+function rebind(code) {
+  if (code !== 'Escape') {
+    const other = ACTIONS.find(([id]) => settings.binds[id] === code)?.[0];
+    if (other) settings.binds[other] = settings.binds[rebinding];     // swap, so nothing is left unbound
+    settings.binds[rebinding] = code;
+    applySettings();
+  }
+  rebinding = null; show('keys');
+}
+
+// ── input ──
+const actionsFor = code => ACTIONS.filter(([id]) => settings.binds[id] === code).map(([id]) => id);
+addEventListener('keydown', e => {
+  if (rebinding) { e.preventDefault(); rebind(e.code); return; }
+  if (mode === 'play') {
+    e.preventDefault();                                     // nothing pressed in a match reaches the browser
+    if (e.code === 'Escape') pause();
+    else if (!e.repeat) actionsFor(e.code).forEach(press);
+  } else if (e.code === 'Escape') {
+    if (mode === 'pause' && screen === 'pause') return;
+    if (screen !== 'main') ACT.back();
+  }
+});
+addEventListener('keyup', e => { if (mode === 'play') { e.preventDefault(); actionsFor(e.code).forEach(release); } });
+addEventListener('mousedown', e => {
+  if (rebinding) { e.preventDefault(); swallowClick = e.button === 0; rebind('mouse' + e.button); return; }
+  if (mode !== 'play') return;
+  e.preventDefault();
+  if (!locked()) { initAudio(); capture(); return; }
+  actionsFor('mouse' + e.button).forEach(press);
+}, true);
+addEventListener('mouseup', e => { if (e.button > 2) e.preventDefault(); if (mode === 'play') actionsFor('mouse' + e.button).forEach(release); });
 addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('mousemove', e => {
-  if (!locked()) return;
+  if (!locked() || mode !== 'play') return;
   cam.yaw -= e.movementX * .0024;
   cam.pitch = clamp(cam.pitch - e.movementY * .0022, -1.35, 1.25);
 });
-addEventListener('keydown', e => {
-  if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
-  if (e.repeat) return;
-  if (e.code === 'KeyR') resetWorld();
-  else if (e.code === 'KeyB') { debug = !debug; if (!debug) timeScale = 1; say(debug ? 'DEBUG ON' : 'DEBUG OFF'); }
-  else if (e.code === 'KeyN' && debug) { timeScale = timeScale === 1 ? .3 : timeScale === .3 ? .08 : 1; say('SPEED x' + timeScale); }
-  else if (e.code === 'KeyK') { resetEnemy(); const x = P.x + Math.sin(cam.yaw) * 18, z = P.z + Math.cos(cam.yaw) * 18;
-    Object.assign(E, { x, z, y: P.y, px: x, pz: z, py: P.y, awake: true, cd: 1.2 }); say(foeName(), 1.4); }
-  else if (e.code === 'Digit1') chooseFighter('hero');
-  else if (e.code === 'Digit2') chooseFighter('cinder');
-  else if (e.code === 'KeyO') quality = (quality + 1) % QUALITY.length;
-  else if (e.code === 'KeyP') cap60 = !cap60;
-  else if (e.code === 'KeyH') $('help').style.display = $('help').style.display === 'none' ? '' : 'none';
-  else press(e.code);
-});
-addEventListener('keyup', e => release(e.code));
-addEventListener('blur', () => { keys.clear(); pressed.clear(); released.clear(); });
+addEventListener('blur', () => { keys.clear(); pressed.clear(); released.clear(); pause(); });
+addEventListener('beforeunload', e => { if (mode !== 'menu') { e.preventDefault(); e.returnValue = ''; } });
 document.addEventListener('pointerlockchange', () => {
   $('msg').style.display = locked() ? 'none' : 'block';
-  if (!locked()) { keys.clear(); P.charge = -1; }
+  if (!locked()) pause();
 });
 
+applySettings();
 resetWorld();
-if (integrated) $('msg').innerHTML = 'Click to play<br><small>Running on the integrated Intel GPU. For smoother play, set your browser to<br>"High performance" in Windows Settings → System → Display → Graphics, then restart it.</small>';
+// card thumbnails are photographs of the real models
+{
+  const shot = document.createElement('canvas'); shot.width = 150; shot.height = 190;
+  const g = shot.getContext('2d');
+  for (const kind of Object.keys(ROSTER)) {
+    preview = { kind, ndc: 0, still: true };
+    for (let i = 0; i < 12; i++) render(0, 1 + i * .05);
+    const h = canvas.height * .82, w = h * 150 / 190;
+    g.drawImage(canvas, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h, 0, 0, 150, 190);
+    thumbs[kind] = shot.toDataURL('image/jpeg', .85);
+  }
+}
+show('main');
 let last = performance.now(), acc = 0, time = 0, frames = 0, statT = 0;
 let due = 0, aimT = 0;
 function frame(now) {
@@ -2663,34 +3440,39 @@ function frame(now) {
   const dt = Math.min(.05, Math.max(0, (now - last) / 1000));
   last = now; acc += (hitStop > 0 ? .12 : 1) * dt * timeScale; hitStop -= dt;   // brief freeze sells heavy hits
   time += dt * timeScale; frames++; statT += dt;
-  fighting = locked();
-  while (acc >= STEP) { step(STEP); acc -= STEP; }
-  updateCollapse(dt * timeScale);
-  updateLife(dt * timeScale);
+  const playing = mode === 'play' && locked();
+  fighting = playing;
+  if (playing) {
+    while (acc >= STEP) { step(STEP); acc -= STEP; }
+    updateCollapse(dt * timeScale);
+    updateLife(dt * timeScale);
+  } else acc = 0;
   if ((aimT += dt) > .1) {
     aimT = 0;
     const look = lookDir(), ok = raycast(aimOrigin(look), look, RANGE);
     $('cross').style.cssText = ok ? 'background:#ffb340;transform:scale(2.2);opacity:1' : '';
   }
-  render(dt, time, acc / STEP);
+  render(playing || mode === 'menu' ? dt : 0, time, playing ? acc / STEP : 1);
   $('style').firstChild.style.width = P.style + '%';
   $('style').className = P.style >= 100 ? 'full' : '';
   $('pop').textContent = popup.t > 0 ? popup.text : '';
   const away = Math.hypot(E.x - P.x, E.z - P.z);
   $('boss').style.display = E.dead ? 'none' : 'block';
-  $('boss').style.color = who === 'cinder' ? '#a9dcff' : '#ffb08a';
-  $('boss').children[1].firstChild.style.background = who === 'cinder' ? '#3fa0ff' : '#ff5a1f';
+  const tone = foe === who || foe === 'hero' ? '#3fa0ff' : foe === 'brute' ? '#d8523a' : '#ff5a1f';
+  $('boss').style.color = '#ffe0d0';
+  $('boss').children[1].firstChild.style.background = tone;
   $('boss').children[0].textContent = foeName() + (E.awake ? '' : ' (waiting)') + '  ·  ' + away.toFixed(0) + ' m';
   $('boss').children[1].firstChild.style.width = E.hp / E.max * 100 + '%';
   $('hp').firstChild.style.width = Math.max(0, P.hp) + '%';
   $('hurt').style.opacity = Math.max(0, P.hurtT * 2, P.hp < 30 ? .3 : 0);
-  $('bar').style.display = P.charge > .05 ? 'block' : 'none';
-  $('bar').firstChild.style.width = (P.charge * 100) + '%';
+  const charge = P.leapCharge > .16 ? clamp((P.leapCharge - .16) / .8, 0, 1) : P.charge;
+  $('bar').style.display = charge > .05 ? 'block' : 'none';
+  $('bar').firstChild.style.width = (charge * 100) + '%';
   if (statT > .5) {
     const fps = frames / statT;
     $('stats').textContent = `${fps.toFixed(0)} fps${cap60 ? ' (cap 60)' : ''} · ${canvas.width}×${canvas.height}\nGPU: ${gpuName} · ${QUALITY[quality][0]}\n${(staticCount + dynCount + lifeCount).toLocaleString()} boxes\n`
       + `${Math.hypot(P.vx, P.vy, P.vz).toFixed(0)} m/s · alt ${P.y.toFixed(0)} m\ndash ${'◆'.repeat(P.dashes)}${'◇'.repeat(2 - P.dashes)}`
-      + (debug ? `\n\nDEBUG  style full, endless dash + jump\nN: speed x${timeScale}\nanim ${P.act?.name || '-'} · pos ${P.x.toFixed(0)}, ${P.y.toFixed(0)}, ${P.z.toFixed(0)}` : '');
+      + (debug ? `\n\nDEBUG  style full, endless dash + jump\nspeed x${timeScale}\nanim ${P.act?.name || '-'} · pos ${P.x.toFixed(0)}, ${P.y.toFixed(0)}, ${P.z.toFixed(0)}` : '');
     frames = 0; statT = 0;
   }
   requestAnimationFrame(frame);
@@ -2701,7 +3483,9 @@ requestAnimationFrame(frame);
 window.game = {
   async bench(n = 60) { render(0, 1); await device.queue.onSubmittedWorkDone(); const t = performance.now(); for (let i = 0; i < n; i++) render(0, 1); await device.queue.onSubmittedWorkDone(); return { ms: +((performance.now() - t) / n).toFixed(2), w: canvas.width, h: canvas.height }; },
   P, cam, press, release, step, STEP, carve, updateCollapse, resetWorld, render,
-  setDebug(v) { debug = v; }, chooseFighter, get rain() { return rain; }, get dyn() { return dynCount; }, E, get waves() { return waves; }, setFighting(v) { fighting = v; }, startMove, damageEnemy,
+  setDebug(v) { debug = v; }, settings, show, startMatch, saveGame, loadGame, toMain, pause,
+  get mode() { return mode; }, get screen() { return screen; }, get who() { return who; }, get foe() { return foe; },
+  chooseFighter(name) { setMatch(name, 'cinder'); }, get rain() { return rain; }, get dyn() { return dynCount; }, E, get waves() { return waves; }, setFighting(v) { fighting = v; }, startMove, damageEnemy,
   get buildings() { return buildings; },
   sim(seconds) { for (let t = 0; t < seconds; t += STEP) { step(STEP); updateCollapse(STEP); updateLife(STEP); } },
   updateLife, get cars() { return cars; }, get civs() { return civs; }, get lifeBoxes() { return lifeCount; },
