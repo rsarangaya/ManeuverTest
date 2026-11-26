@@ -21,6 +21,7 @@
   #style.full i{background:#ffb81f}
   #style.full span{color:#111;text-shadow:none;font-size:13px}
   @keyframes ultglow{from{box-shadow:0 0 6px #ffb81f}to{box-shadow:0 0 24px 4px #ffd25a}}
+  #flash{position:fixed;inset:0;background:#ffe6b0;opacity:0;pointer-events:none}
   #pop.gold{color:#ffd23f;font-size:38px;text-shadow:0 0 14px #f60,0 2px 4px #000}
   #pop{position:fixed;left:50%;top:22%;transform:translateX(-50%);font-size:30px;font-weight:800;letter-spacing:3px;color:#bfe6ff;text-shadow:0 0 12px #17a,0 2px 4px #000;pointer-events:none;white-space:nowrap}
   #boss{position:fixed;left:50%;top:10px;width:420px;margin-left:-210px;text-align:center;font-weight:700;letter-spacing:2px;color:#ffb08a;text-shadow:0 1px 3px #000;pointer-events:none}
@@ -76,6 +77,7 @@
 <div id="bar"><i></i></div>
 <div id="meter"><i></i></div>
 <div id="style"><i></i><span></span></div>
+<div id="flash"></div>
 <div id="pop"></div>
 <div id="boss"><span></span><div><i></i></div></div>
 <div id="hp"><i></i></div>
@@ -1281,7 +1283,7 @@ function horizonCut(x, y, z, yaw, mine) {
 }
 
 // ───────── SHOOTYGAL: fast, fragile up close, deadly with room to aim ─────────
-const RIFLE_DMG = 13, HEAD_BONUS = 1.5, CANNON_DMG = 140, PULSE_REACH = 16, PULSE_GAP = 2, AMMO = 12, RELOAD = 1.4, CANNON_BUILD = 2, BULLET = 190, CANNON_GUARD = .5;
+const RIFLE_DMG = 13, HEAD_BONUS = 1.5, CANNON_DMG = 140, PULSE_REACH = 16, PULSE_GAP = 2, SHELL_BLAST = 22, AMMO = 12, RELOAD = 1.4, CANNON_BUILD = 2, BULLET = 190, CANNON_GUARD = .5;
 const GUNFIRE = new Set(['shot', 'pellet', 'net', 'flash', 'ric', 'ball']);
 // a shot in flight; waves already travel, draw and cross the network
 function fire(from, d, kind, speed, life, extra = {}) {
@@ -1531,7 +1533,7 @@ function shellBurst(w, direct) {
   const [x, y, z] = w.p;
   let left = w.towers;
   const gap = b => Math.hypot(x - clamp(x, b.x, b.x + b.nx * V), z - clamp(z, b.z, b.z + b.nz * V));
-  if (truce.t <= 0) for (const b of buildings.filter(b => gap(b) <= 20).sort((p, q) => gap(p) - gap(q))) {
+  if (truce.t <= 0) for (const b of buildings.filter(b => gap(b) <= 32).sort((p, q) => gap(p) - gap(q))) {
     if (left <= 0) break;
     if (!floorStands(b, 4.5)) continue;
     const dx = b.x + b.nx * V / 2 - x, dz = b.z + b.nz * V / 2 - z, alongX = Math.abs(dx) > Math.abs(dz), sign = Math.sign(alongX ? dx : dz) || 1;
@@ -1543,14 +1545,58 @@ function shellBurst(w, direct) {
   }
   if (w.owner) w.owner.left -= w.towers - left;
   if (w.mine) {
-    byEnemy = true; carve(x, y, z, 7, 30); byEnemy = false;
-    if (!E.dead && (direct || Math.hypot(E.x - x, E.y + 1.5 - y, E.z - z) < 9)) { E.guard = 0; E.inv = 0; damageEnemy(CANNON_DMG); if (!E.dead) Object.assign(E, { vy: 22, stun: .6 }); }
+    byEnemy = true; carve(x, y, z, 13, 40); byEnemy = false;
+    if (pvp) netSend({ t: 'boom', x, y, z });
+    if (!E.dead && (direct || Math.hypot(E.x - x, E.y + 1.5 - y, E.z - z) < SHELL_BLAST + pad(foe))) { E.guard = 0; E.inv = 0; damageEnemy(CANNON_DMG); if (!E.dead) Object.assign(E, { vy: 22, stun: .6 }); }
   } else {
-    wreck(x, y, z, 7, 30);
-    if (direct || Math.hypot(P.x - x, P.y + 1.1 - y, P.z - z) < 9) { P.iframe = 0; hurtPlayer(32, x, z, 30); }
+    wreck(x, y, z, 13, 40);
+    if (direct || Math.hypot(P.x - x, P.y + 1.1 - y, P.z - z) < SHELL_BLAST + pad(who)) { P.iframe = 0; hurtPlayer(32, x, z, 30); }
   }
-  if (y < 2) addCrater(x, z, 8);
-  dust(x, y, z, 80, 30); jolt(1.8, .1); sfx(1, 180, 1.3);
+  if (y < 3) addCrater(x, z, 16);
+  dust(x, y, z, 90, 55);
+  explode(x, y, z);
+}
+// the shell going off: a white flash, a swelling fireball, a ring racing along the ground and a column of smoke
+let blasts = [];
+const BLAST_TIME = 1.8;
+function explode(x, y, z) {
+  blasts = blasts.filter(b => clock - b.at < BLAST_TIME).concat({ at: clock, x, y, z });
+  quietly(() => {
+    for (let i = 0; i < 220; i++) {
+      const a = rr(0, 6.283), up = rr(-.2, 1), flat = Math.sqrt(1 - up * up), v = rr(25, 70);
+      debris(x, y + 1, z, rr(.25, .9), i % 3 ? [1, rr(.35, .8), .08] : [.16, .13, .12], Math.sin(a) * flat * v, up * v, Math.cos(a) * flat * v, rr(.6, 2));
+    }
+  });
+  const near = clamp(1.5 - Math.hypot(P.x - x, P.y - y, P.z - z) / 120, .3, 1);
+  jolt(3 * near, .16); sfx(1, 120, 2);
+}
+function drawBlasts(time) {
+  let flash = 0;
+  for (const b of blasts) {
+    const t = clock - b.at;
+    if (t < 0 || t > BLAST_TIME) continue;
+    const k = t / BLAST_TIME, grow = 1 - (1 - Math.min(1, t / .45)) ** 3, r = SHELL_BLAST * grow;
+    flash = Math.max(flash, .75 * (1 - t / .3));
+    if (t < .18) { const c = 12 * (1 - t / .18) + 3; push(b.x, b.y + 1, b.z, 3, c, c, c, time * 9, [1, 1, .9], time * 7); }
+    if (t < .9) {                                            // the fireball, thinning as it swells
+      const thin = 1 - t / .9;
+      for (let i = 0; i < 130; i++) {
+        const up = 1 - 2 * (i + .5) / 130, flat = Math.sqrt(1 - up * up), a = i * 2.39996 + t * 2, q = r * (i % 4 ? 1 : .6), y = b.y + up * q, size = 4.2 * thin + .3;
+        if (y > 0) push(b.x + Math.sin(a) * flat * q, y, b.z + Math.cos(a) * flat * q, 3, size, size, size, a, i % 4 === 0 ? [1, .95, .6] : i % 2 ? [1, .5, .06] : [.95, .2, .03], a * 2);
+      }
+    }
+    const wide = 6 + 44 * Math.min(1, t / .8), floor = Math.max(.3, Math.min(b.y, 2));
+    if (t < .8) for (let i = 0; i < 56; i++) {               // shock ring
+      const a = i / 56 * 6.283;
+      push(b.x + Math.sin(a) * wide, floor, b.z + Math.cos(a) * wide, 3, wide * .11, 1.4 * (1 - t / .8), .8, a, [1, .8, .4]);
+    }
+    for (let i = 0; i < 26; i++) {                           // smoke column with a spreading head
+      const h = i / 25, a = i * 2.4 + t, head = i > 17, out = head ? 5 + 9 * k : 1.5, size = (head ? 6.5 : 4) * (1 - k * k) * grow;
+      if (size > .1) push(b.x + Math.sin(a) * out, b.y + (head ? 1 : h) * (8 + 26 * k) + (head ? Math.sin(a * 3) * 2 : 0), b.z + Math.cos(a) * out, k < .25 ? 3 : 0, size, size, size, a,
+        k < .25 ? [1, .55 - k, .1] : [.2, .17, .16], a * .6);
+    }
+  }
+  $('flash').style.opacity = Math.max(0, flash).toFixed(2);
 }
 
 // timers, blade hits and movement for the knight. Returns true when it drives velocity
@@ -2017,6 +2063,19 @@ function stepSun(dt) {
   if (P.flying) { P.flying = false; P.leaping = false; say('OUT OF SUNLIGHT', 1.2); }
   if (gazing) { P.cm = null; P.beam = null; }
 }
+const FLARE_FALL = 220, FLARE_WIDE = 12;
+function drawSunPillar(x, top, low, z, time) {
+  const mid = (top + low) / 2, tall = Math.max(.1, top - low), pulse = 1 + Math.sin(time * 40) * .12;
+  push(x, mid, z, 3, 2 * pulse, tall, 2 * pulse, time * 6, [1, 1, .85]);
+  for (let i = 0; i < 18; i++) {
+    const a = i / 18 * 6.283 + time * 3, r = FLARE_WIDE * (i % 2 ? .8 : .5);
+    push(x + Math.sin(a) * r, mid, z + Math.cos(a) * r, 3, .45 * pulse, tall, .45 * pulse, a, i % 3 ? SUN : [1, .95, .6]);
+  }
+  if (low <= 0) for (let i = 0; i < 48; i++) {               // splashed across the ground
+    const a = i / 48 * 6.283, r = 6 + (time * 30 + i % 3 * 6) % 18;
+    push(x + Math.sin(a) * r, .5, z + Math.cos(a) * r, 3, r * .13, 1, 1, a, i % 2 ? SUN : [1, 1, .85]);
+  }
+}
 const SUN = [1, .8, .22], IVORY = [.9, .88, .8], TEAL = [.05, .38, .42], GILT = [.93, .68, .16], SLATE = [.12, .15, .2], TAN = [.72, .52, .38], INK = [.08, .07, .1];
 function haloActions(look) {
   const m = P.cm, free = !m && P.cool <= 0;
@@ -2188,7 +2247,18 @@ function haloMove(dt) {
       m.tick = .08; smash(P.x, P.y + 1.4, P.z, m.r, 36); jolt(1, .02); sfx(.8, 900, .15);
       if (!m.hit && enemyNear(m.r + 1)) { m.hit = true; E.inv = 0; damageEnemy(160); }
     }
-    if (m.t > 1.35) done();
+    if (m.t > .25) {
+      const was = m.low ?? P.y + 1.4;
+      m.low = Math.max(0, was - FLARE_FALL * dt);
+      for (let y = was - 7; y >= m.low; y -= 7) smash(P.x, y, P.z, 8, 30);
+      if (!m.hit && !E.dead && E.y < P.y && E.y + 3 > m.low && Math.hypot(E.x - P.x, E.z - P.z) < FLARE_WIDE + pad(foe)) { m.hit = true; E.inv = 0; damageEnemy(160); }
+      if (m.low === 0 && !m.landed) {
+        m.landed = m.t;
+        smash(P.x, 2, P.z, 18, 40); addCrater(P.x, P.z, 18); dust(P.x, 0, P.z, 90, 45); jolt(2, .1); sfx(1, 220, 1.4);
+        if (!m.hit && !E.dead && E.y < 12 && Math.hypot(E.x - P.x, E.z - P.z) < 22 + pad(foe)) { m.hit = true; E.inv = 0; damageEnemy(160); }
+      }
+    }
+    if (m.t > 1.35 && m.landed && m.t > m.landed + .5 || m.t > 3) done();
     return true;
   }
   if (m.t > .3) done();
@@ -2286,6 +2356,7 @@ function drawHaloPlayer(time) {
     push(...mid, 3, .06, .06, l, yaw, [1, 1, .92], pitch);
     push(...P.beam.to, 3, 1.1 * flick, 1.1 * flick, 1.1 * flick, time * 9, [1, .92, .55], time * 7);
   }
+  if (m?.name === 'flare' && m.low !== undefined) drawSunPillar(P.x, P.y + 1.4, m.low, P.z, time);
   if (m?.name === 'flare') for (let i = 0; i < 200; i++) { const y = 1 - 2 * (i + .5) / 200, ring = Math.sqrt(1 - y * y), a = i * 2.39996 + time * 4;
     const py = P.y + 1.4 + y * m.r; if (py > 0) push(P.x + Math.sin(a) * ring * m.r, py, P.z + Math.cos(a) * ring * m.r, 3, m.r * .07, m.r * .07, .15, a, i % 4 ? SUN : [1, 1, .85]); }
   if (m?.name === 'charge') for (let i = 0; i < 12; i++) { const a = time * 13 + i * .52, r = 2.4 - (time * 4 + i * .3) % 1 * 2 * m.power;
@@ -2684,7 +2755,7 @@ const ROSTER = {
     moves: [['Space', 'Flight', 'Take off; in the air you fly where you look. Jump rises, crouch descends'], ['ShiftLeft', 'Boost', 'Hold while flying to tear through buildings'],
       ['mouse0', 'Solar Strikes', 'Alternating punches'], ['mouse0', 'Comet Punch (hold)', 'Charge, release and fly through them'], ['mouse2', 'Sun Gaze (hold)', 'Twin beams that cut what you look at'],
       ['KeyF', 'Skyfall', 'Dive onto your aim'], ['KeyG', 'Grab / Throw', 'Carry the rival, a car, a bystander or rubble'], ['KeyT', 'Gale', 'A blast of wind that scatters everything ahead'],
-      ['KeyZ', 'Sonic Burst', 'Shockwave all around you'], ['KeyQ', 'Solar Flare', 'Ultimate: erupt like a small sun']] },
+      ['KeyZ', 'Sonic Burst', 'Shockwave all around you'], ['KeyQ', 'Solar Flare', 'Ultimate: erupt like a small sun, with a pillar of light that reaches the ground from any height']] },
   slash: { name: 'SLASHYGAL', role: 'Greatsword duelist', stats: [5, 3, 4, 4], speed: 1.02, jump: 1, armor: .62, power: 1.85, hp: 1350, netHp: 920, size: .9, deal: 1.95, camH: 3.1, camD: 8, tempo: .92,
     desc: 'A white-haired swordfighter dragging a blade taller than she is. Few swings, long reach, heavy hits. Miss one and she is wide open.',
     moves: [['mouse0', 'Heavy Cuts', 'Three wide slashes, each a step forward'], ['mouse0', 'Piercing Stab (hold)', 'A thrust that drives them far away'],
@@ -3009,7 +3080,13 @@ function activeMove(dt) {
     E.vx = E.vz = 0; E.vy = t < .35 ? 18 : 0;
     const r = Math.min(17, 4 + t * 20);
     if ((E.carveT -= dt) <= 0) { E.carveT = .09; wreck(E.x, E.y + 1.5, E.z, r, 30); cam.shake = .7; }
-    if (!E.hits && Math.hypot(P.x - E.x, P.y - E.y, P.z - E.z) < r + 1 + pad(who) && hurtPlayer(30, E.x, E.z, 30)) E.hits = 1;
+    let under = false;
+    if (foe === 'halo' && t > .25) {
+      const low = Math.max(0, E.y + 1.4 - (t - .25) * FLARE_FALL);
+      under = P.y < E.y && P.y + 2 > low && Math.hypot(P.x - E.x, P.z - E.z) < FLARE_WIDE + pad(who);
+      if (E.carveT === .09) for (let y = E.y - 7; y >= low; y -= 9) wreck(E.x, y, E.z, 8, 30);
+    }
+    if (!E.hits && (under || Math.hypot(P.x - E.x, P.y - E.y, P.z - E.z) < r + 1 + pad(who)) && hurtPlayer(30, E.x, E.z, 30)) E.hits = 1;
   } else if (E.move === 'clap') {
     E.vx = E.vz = 0;
     if (!E.hits) {
@@ -3408,8 +3485,13 @@ function drawGal(v, time) {
   for (const side of [-1, 1]) beamBox(at(side * .38, 1.86, 0), side > 0 ? h : [h[0] - dir[0] * .3, h[1] - dir[1] * .3, h[2] - dir[2] * .3], .15, .15, col(GALCOAT));
   const len = BLADE_LEN;
   if (run && fxDt && Math.random() < fxDt * 45) { const p = along(len); quietly(() => debris(p[0], v.y + .15, p[2], rr(.07, .14), [1, .75, .3], rr(-4, 4), rr(2, 8), rr(-4, 4), rr(.15, .35))); }
-  if (mv === 'horizon' && on && (st === 'wind' || t < HORIZON_WIND)) for (let d = 3; d < HORIZON_REACH; d += 3)   // the warning line
-    for (const side of [-3.2, 0, 3.2]) push(v.x + sy * d + cy * side, v.y + .15, v.z + cy * d - sy * side, 3, side ? .14 : .35, .12, side ? 1.2 : 2.4, yaw, GALRED);
+  if (mv === 'horizon' && on && since < 0) {               // the warning: the slanted cut to come, high on one side
+    for (let d = 6; d < HORIZON_REACH; d += 6) beamBox(at(4, 7, d), at(-4, .3, d), .16, .16, GALRED, 3);
+    for (const [side, up] of [[4, 7], [0, 3.65], [-4, .3]]) for (let d = 3; d < HORIZON_REACH; d += 3) {
+      const p = at(side, up, d);
+      push(p[0], p[1], p[2], 3, side ? .14 : .22, side ? .14 : .22, side ? 1.4 : 2.2, yaw, GALRED);
+    }
+  }
   if (mv === 'horizon' && since >= 0 && since < .45) {      // the diagonal streak
     const k = 1 - since / .45;
     beamBox(at(9, 11, 7), at(-9, .2, 7), 1.1 * k, 1.1 * k, GALRED, 3);
@@ -3537,7 +3619,11 @@ function drawGunner(v, time) {
   for (const d of [1.5, 2.6, 3.7]) part(4, barrel(d), barrel(d + .22), 1.05, 1.05, ORANGE);
   part(5, barrel(-1.3), barrel(-1), .8, .8, ORANGE, 3);
   if (k >= 1) {
-    push(...barrel(4.15), 3, .4 + Math.sin(time * 12) * .12, .4, .4, time * 5, ORANGE, time * 7);
+    push(...barrel(4.15), 3, .7 + Math.sin(time * 12) * .2, .7, .7, time * 5, ORANGE, time * 7);
+    for (let i = 0; i < 18; i++) {
+      const pull = 1 - (time * 1.8 + i * .137) % 1, a = i * 2.4 + time * 3, tip = barrel(4.15), out = 3.2 * pull;
+      push(tip[0] + Math.sin(a) * out, tip[1] + Math.cos(a * 1.7) * out, tip[2] + Math.cos(a) * out, 3, .22 * pull + .05, .22 * pull + .05, .22 * pull + .05, a, i % 3 ? ORANGE : [1, .95, .7], a);
+    }
     for (let d = 7; d < 60; d += 3) {                         // where the shell is going
       const p = at(0, 2.45 + Math.sin(aimed) * d, .3 + Math.cos(aimed) * d);
       if (p[1] > v.y - 40 && p[1] > .2) push(p[0], p[1], p[2], 3, .22, .22, 1.1, yaw, [1, .25, .15], -aimed);
@@ -3767,7 +3853,12 @@ function drawEnemyEffects(time) {
     }
   }
   else if (w.kind === 'flash') push(...w.p, 3, .5, .5, .5, w.life * 20, [1, 1, .9], w.life * 14);
-  else if (w.kind === 'ball') { push(...w.p, 3, 1.5, 1.5, 1.5, w.yaw, [1, .5, .1], .7); push(...w.p, 3, 1, 1, 3.2, w.yaw, [1, .85, .4]); }
+  else if (w.kind === 'ball') {
+    const speed = Math.hypot(...w.v) || 1, d = w.v.map(v => v / speed), back = k => w.p.map((v, i) => v - d[i] * k);
+    push(...w.p, 3, 2.6, 2.6, 2.6, time * 11, [1, .95, .75], time * 8); push(...w.p, 3, 3.4, .5, 3.4, time * 14, [1, .45, .05]); push(...w.p, 3, .5, 3.4, 3.4, time * 9, [1, .45, .05]);
+    const tail = Math.min(26, (w.age || 0) * speed);
+    for (let i = 0; i < 9; i++) { const k = tail * (i + .5) / 9, size = 2 * (1 - i / 10); push(...back(k), 3, size, size, size, i + time * 6, [1, .8 - i * .08, .25 - i * .025], i * 2); }
+  }
   else if (w.kind === 'arc') {                                // a pale crescent
     for (let i = -4; i <= 4; i++) {
       const a = i * .24, side = Math.sin(a) * 3.2, up = i * .22, back = (1 - Math.cos(a)) * 3.2;
@@ -3795,6 +3886,7 @@ function drawEnemyEffects(time) {
     const r = E.state === 'act' ? E.ring : E.move === 'sphere' ? 17 : E.move === 'cross' ? 11 : 24;
     for (let i = 0; i < 28; i++) { const a = i / 28 * 6.283 + time; ground(E.x + Math.sin(a) * r, E.z + Math.cos(a) * r, a, 1.4); }
   }
+  if (foe === 'halo' && E.state === 'act' && E.move === 'sphere' && E.t > .25) drawSunPillar(E.x, E.y + 1.4, Math.max(0, E.y + 1.4 - (E.t - .25) * FLARE_FALL), E.z, time);
   if (E.state === 'act' && E.move === 'sphere') { const r = Math.min(17, 4 + E.t * 20); for (let i = 0; i < 90; i++) { const y = 1 - 2 * (i + .5) / 90, ring = Math.sqrt(1 - y * y), a = i * 2.39996 + time * 5; if (E.y + 1.5 + y * r > 0) push(E.x + Math.sin(a) * ring * r, E.y + 1.5 + y * r, E.z + Math.cos(a) * ring * r, 3, r * .09, .16, .16, a + 1.57, [1, .25, .2]); } }
   const marked = E.move === 'leap' && (E.state === 'wind' || E.state === 'act' && !E.hits);
   if (marked) for (let i = 0; i < 18; i++) {                         // where the cleave will land
@@ -4399,7 +4491,7 @@ function buildFallers() {
 
 function buildDynamic(time) {
   buildScene(time);
-  if (!preview) { drawRubble(fxDt); drawGashes(); }
+  if (!preview) { drawRubble(fxDt); drawGashes(); drawBlasts(time); } else $('flash').style.opacity = 0;
   drawFlames();
 }
 function buildScene(time) {
@@ -4805,7 +4897,7 @@ function flushDebris() {
 }
 
 function resetWorld() {
-  genCity(); initLife(); resetPlayer(); fallers = []; gashes = []; resetEnemy(); history = []; popup.t = 0; hitStop = 0; craters.fill(0); thrown.length = 0; debrisQueue.length = 0; truce.t = 0;
+  genCity(); initLife(); resetPlayer(); fallers = []; gashes = []; blasts = []; resetEnemy(); history = []; popup.t = 0; hitStop = 0; craters.fill(0); thrown.length = 0; debrisQueue.length = 0; truce.t = 0;
   device.queue.writeBuffer(partBuf, 0, new Float32Array(NDEB * 12));
   debrisLive = 0;
 }
@@ -4866,7 +4958,7 @@ function render(dt, time, alpha = 1) {
 // ───────────────────────── events + loop ─────────────────────────
 const locked = () => document.pointerLockElement === canvas;
 // ───────────────────────── online 1v1 (WebRTC, peer to peer) ─────────────────────────
-const PROTO = 8;
+const PROTO = 9;
 const PEER_LIB = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';   // only loaded when you go online
 const LOCAL_NET = new URLSearchParams(location.search).get('net') === 'local';   // two tabs on one computer, for testing
 // the parts of a fighter the other side needs in order to draw them
@@ -5025,6 +5117,7 @@ function onNet(m) {
     if (truce.t > 0) return;
     P.vx = num(m.x, -90, 90); P.vy = num(m.y, -20, 60); P.vz = num(m.z, -90, 90); P.grounded = false; P.flying = false;
   } else if (m.t === 'down') { pvp.mine++; say('YOU WIN THE ROUND  ·  ' + pvp.mine + ' - ' + pvp.theirs, 2.5); startTruce(true); popup.t = 1.5; }
+  else if (m.t === 'boom') explode(num(m.x, -400, 400), num(m.y, 0, 300), num(m.z, -400, 400));
   else if (m.t === 'slide') landslide(num(m.x, -400, 400), num(m.y, 0, 300), num(m.z, -400, 400), num(m.yaw, -10, 10), false, true);
   else if (m.t === 'topple') {
     const b = buildings[m.i | 0];
