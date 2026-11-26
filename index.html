@@ -329,7 +329,7 @@ function resetPlayer() {
     charge: -1, airJumps: 1, dashes: 2, dash: 0, dashDir: [0,0,1], act: null, cm: null, leapCharge: -1, leaping: false, rushCd: 0, cds: {}, sun: 100, heat: 0, heatT: 0, empower: 0, vent: 0, burn: null, stunT: 0, ccGuard: 0, parryCd: 0, juggle: 0, cuts: 2, ammo: 12, gun: 0, scope: false, reload: 0, burst: 0, burstT: 0, pumpCd: 0, padCd: 0, trapCd: 0, netCd: 0, flashCd: 0, ricCd: 0, rollCd: 0, pad: null, trap: null, blindT: 0, ultLock: 0, cooled: true, held: null, flying: false, beam: null, swings: 0, hp: 100, iframe: 0, hurtT: 0, style: 0, zipT: 0, atkBuf: 0, hold: 0, cross: null, crossUsed: false, spin: null, chainHits: 0, lastHit: -9, storm: null, meteor: null, guill: null, kick: null, orbit: null, wire: null,
     reelBlock: null, whirl: null, carving: null, wasCarving: false, carveY: undefined, slashSide: 1, glide: false, dive: false, peak: 0,
     punch: 0, cool: 0, phase: 0, holding: null, coyote: 0, wallLock: 0, spaceAir: 0,
-    h: 2, slide: false, slideCd: 0, mantle: null, jumpBuf: 0, landT: 1, airPress: false, px: 0, py: 0, pz: 0, chain: null, lash: null, reel: null, slashT: 0 });
+    h: 2, slide: false, slideCd: 0, shield: 0, calm: 0, mantle: null, jumpBuf: 0, landT: 1, airPress: false, px: 0, py: 0, pz: 0, chain: null, lash: null, reel: null, slashT: 0 });
   cam.dip = 0; cam.roll = 0; cam.low = 0;
   heroBlank = Object.assign({}, P);
 }
@@ -463,7 +463,7 @@ function updateChain(dt) {
     const d = Math.hypot(c.a[0] - P.x, c.a[1] - P.y - 1, c.a[2] - P.z);
     // keep the bottom of the arc above the street
     c.target = Math.max(6, Math.min(d * .82, c.a[1] > 20 ? c.a[1] - 15 : c.a[1] - 4)); c.len = d;
-    P.airJumps = 1; P.dashes = ROSTER[who].dashes || 2;
+    P.airJumps = 1; P.dashes = maxDashes();
     if (!c.slack) { P.wall = null; if (P.grounded) { P.vy = 19; P.grounded = false; P.coyote = 0; } }
     dust(...c.a, 8, 5); sfx(.35, 900, .15); cam.shake = Math.max(cam.shake, .15);
   }
@@ -562,7 +562,7 @@ const ULT_PER_DAMAGE = 1.6;               // ult % for each 1% of their health b
 const ULT_TRICKLE = 100 / 600;            // % per second: ten minutes from empty
 const ULT_LOCK = 5;                       // an ultimate's own hits do not recharge it
 function chargeUlt(share) {
-  if (!(P.ultLock > 0)) P.style = Math.min(100, P.style + share * ULT_PER_DAMAGE * (ROSTER[who].ultRate || 1));
+  if (!(P.ultLock > 0)) P.style = Math.min(100, P.style + share * ULT_PER_DAMAGE * (ROSTER[who].ultRate || 1) * (perk('surge') ? 1.3 : 1));
 }
 const spendUlt = () => { P.style = 0; P.ultLock = ULT_LOCK; };
 function style(move, pts = 8) {
@@ -890,7 +890,7 @@ function stepFallers(dt) {
 // timers and held moves that do not take over movement
 function updateMoves(dt) {
   clock += dt;
-  if (debug) { P.style = 100; P.dashes = ROSTER[who].dashes || 2; P.airJumps = 1; }
+  if (debug) { P.style = 100; P.dashes = maxDashes(); P.airJumps = 1; }
   if (P.act && (P.act.t += dt) >= P.act.dur) P.act = null;
   P.zipT -= dt; popup.t -= dt;
   P.ultLock -= dt; P.style = Math.min(100, P.style + ULT_TRICKLE * dt);
@@ -915,7 +915,7 @@ function updateMoves(dt) {
       const t = clamp(dot(p, d) / (dot(d, d) || 1), 0, 1);
       if (Math.hypot(p[0] - d[0] * t, p[1] - d[1] * t, p[2] - d[2] * t) < 2.4) {
         P.vx = Math.sin(cam.yaw) * 55; P.vz = Math.cos(cam.yaw) * 55; P.vy = 38; P.grounded = false; P.coyote = 0;
-        P.airJumps = 1; P.dashes = ROSTER[who].dashes || 2; wire.cool = 1.2; jolt(.5); style('slingshot', 16); sfx(.7, 1500, .3);
+        P.airJumps = 1; P.dashes = maxDashes(); wire.cool = 1.2; jolt(.5); style('slingshot', 16); sfx(.7, 1500, .3);
       }
     }
   }
@@ -988,7 +988,7 @@ function specialMove(dt, wx, wz, crouchKey) {
       const r = raycast([P.x, P.y + 1.2, P.z], u, l);
       if (r) { o.p = r.p; if (carve(r.p[0] + u[0], r.p[1], r.p[2] + u[2], 2.8, -12)) { cam.shake = Math.max(cam.shake, .3); sfx(.4, 1300, .1); } }
     }
-    if (!keys.has('KeyX') || !floorStands(o.b, o.y)) { P.orbit = null; P.vy += 12; P.airJumps = 1; P.dashes = ROSTER[who].dashes || 2; }
+    if (!keys.has('KeyX') || !floorStands(o.b, o.y)) { P.orbit = null; P.vy += 12; P.airJumps = 1; P.dashes = maxDashes(); }
     return true;
   }
   const c = P.chain;
@@ -1002,7 +1002,7 @@ function specialMove(dt, wx, wz, crouchKey) {
   if (c?.sling) {
     const d = [c.a[0] - P.x, c.a[1] - P.y - 1, c.a[2] - P.z], l = Math.hypot(...d) || 1, v = 48 + c.sling * 52;
     P.vx = d[0] / l * v; P.vy = d[1] / l * v + 8; P.vz = d[2] / l * v;
-    dropChain(false); P.airJumps = 1; P.dashes = ROSTER[who].dashes || 2; jolt(.5); style('slingshot', 16); sfx(.7, 1600, .3);
+    dropChain(false); P.airJumps = 1; P.dashes = maxDashes(); jolt(.5); style('slingshot', 16); sfx(.7, 1600, .3);
     return false;
   }
   if (crouchKey && !c && !P.grounded && !P.wall && P.vy < 0) { // wall carve: sickle drags as a brake
@@ -1320,11 +1320,11 @@ function shotgun() {
 }
 function shootyActions(look) {
   const m = P.cm;
-  if (P.reload > 0 && (P.reload -= STEP) <= 0) P.ammo = AMMO;
+  if (P.reload > 0 && (P.reload -= STEP) <= 0) P.ammo = maxAmmo();
   if (m?.name === 'cannon') {                                // planted: no moving, but the gadgets still work
     P.scope = false;
     if (pressed.has('mouse0') && m.t > CANNON_BUILD && m.shots > 0 && m.gap <= 0) cannonFire(m);
-    if (pressed.has('mouse2') && !(m.pulse > 0)) { m.pulse = PULSE_GAP; gunPulse(); }
+    if (pressed.has('mouse2') && !(m.pulse > 0) && (!pvp?.bo5 || perk('pulse'))) { m.pulse = PULSE_GAP; gunPulse(); }
     return shootyGadgets(true);
   }
   const free = !m;
@@ -1348,7 +1348,7 @@ function shootyActions(look) {
     else {
       const side = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0), fwd = (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0);
       const a = cam.yaw + (side || fwd ? Math.atan2(-side, fwd) : Math.PI);          // backwards if you hold nothing
-      P.rollCd = 3; P.ammo = AMMO; P.reload = 0; P.iframe = .35; startCm('roll', { d: [Math.sin(a), Math.cos(a)] }); sfx(.4, 800, .25);
+      P.rollCd = 3; P.ammo = maxAmmo(); P.reload = 0; P.iframe = .35; startCm('roll', { d: [Math.sin(a), Math.cos(a)] }); sfx(.4, 800, .25);
     }
   }
   if (pressed.has('KeyQ') && free) {
@@ -1493,7 +1493,7 @@ function stepBolt(w, dt) {
     else if (w.mine) {
       const head = headshot(w, dir), was = E.hp;
       E.inv = 0; if (head) ding();
-      damageEnemy((w.dmg + (w.bounced ? 6 : 0)) * (head ? HEAD_BONUS : 1));
+      damageEnemy((w.dmg + (w.bounced ? 6 : 0)) * (head ? perk('deadeye') ? 2 : HEAD_BONUS : 1));
       if (head && !E.dead && (pvp || E.hp < was)) { say('◎ HEADSHOT', .9); popup.gold = true; }
     }
     else hurtPlayer(w.bounced ? 11 : 5, w.p[0] - w.v[0], w.p[2] - w.v[2], 8);
@@ -1534,7 +1534,7 @@ function shellBurst(w, direct) {
   const [x, y, z] = w.p;
   let left = w.towers;
   const gap = b => Math.hypot(x - clamp(x, b.x, b.x + b.nx * V), z - clamp(z, b.z, b.z + b.nz * V));
-  if (truce.t <= 0) for (const b of buildings.filter(b => gap(b) <= 32).sort((p, q) => gap(p) - gap(q))) {
+  if (truce.t <= 0) for (const b of buildings.filter(b => gap(b) <= (w.mine && blastRadius() < SHELL_BLAST ? 20 : 32)).sort((p, q) => gap(p) - gap(q))) {
     if (left <= 0) break;
     if (!floorStands(b, 4.5)) continue;
     const dx = b.x + b.nx * V / 2 - x, dz = b.z + b.nz * V / 2 - z, alongX = Math.abs(dx) > Math.abs(dz), sign = Math.sign(alongX ? dx : dz) || 1;
@@ -1546,22 +1546,22 @@ function shellBurst(w, direct) {
   }
   if (w.owner) w.owner.left -= w.towers - left;
   if (w.mine) {
-    byEnemy = true; carve(x, y, z, 13, 40); byEnemy = false;
-    if (pvp) netSend({ t: 'boom', x, y, z });
-    if (!E.dead && (direct || Math.hypot(E.x - x, E.y + 1.5 - y, E.z - z) < SHELL_BLAST + pad(foe))) { E.guard = 0; E.inv = 0; damageEnemy(CANNON_DMG); if (!E.dead) Object.assign(E, { vy: 22, stun: .6 }); }
+    byEnemy = true; carve(x, y, z, blastRadius() < SHELL_BLAST ? 7 : 13, 40); byEnemy = false;
+    if (pvp) netSend({ t: 'boom', x, y, z, r: blastRadius() });
+    if (!E.dead && (direct || Math.hypot(E.x - x, E.y + 1.5 - y, E.z - z) < blastRadius() + pad(foe))) { E.guard = 0; E.inv = 0; damageEnemy(CANNON_DMG); if (!E.dead) Object.assign(E, { vy: 22, stun: .6 }); }
   } else {
     wreck(x, y, z, 13, 40);
     if (direct || Math.hypot(P.x - x, P.y + 1.1 - y, P.z - z) < SHELL_BLAST + pad(who)) { P.iframe = 0; hurtPlayer(32, x, z, 30); }
   }
   if (y < 3) addCrater(x, z, 16);
   dust(x, y, z, 90, 55);
-  explode(x, y, z);
+  explode(x, y, z, w.mine ? blastRadius() : SHELL_BLAST);
 }
 // the shell going off: a white flash, a swelling fireball, a ring racing along the ground and a column of smoke
 let blasts = [];
 const BLAST_TIME = 1.8;
-function explode(x, y, z) {
-  blasts = blasts.filter(b => clock - b.at < BLAST_TIME).concat({ at: clock, x, y, z });
+function explode(x, y, z, r = SHELL_BLAST) {
+  blasts = blasts.filter(b => clock - b.at < BLAST_TIME).concat({ at: clock, x, y, z, r });
   quietly(() => {
     for (let i = 0; i < 220; i++) {
       const a = rr(0, 6.283), up = rr(-.2, 1), flat = Math.sqrt(1 - up * up), v = rr(25, 70);
@@ -1576,7 +1576,7 @@ function drawBlasts(time) {
   for (const b of blasts) {
     const t = clock - b.at;
     if (t < 0 || t > BLAST_TIME) continue;
-    const k = t / BLAST_TIME, grow = 1 - (1 - Math.min(1, t / .45)) ** 3, r = SHELL_BLAST * grow;
+    const k = t / BLAST_TIME, grow = 1 - (1 - Math.min(1, t / .45)) ** 3, r = b.r * grow;
     flash = Math.max(flash, .75 * (1 - t / .3));
     if (t < .18) { const c = 12 * (1 - t / .18) + 3; push(b.x, b.y + 1, b.z, 3, c, c, c, time * 9, [1, 1, .9], time * 7); }
     if (t < .9) {                                            // the fireball, thinning as it swells
@@ -1635,7 +1635,7 @@ function cinderMove(dt) {
     const d = m.d;
     P.vx = d[0] * 78; P.vy = d[1] * 78; P.vz = d[2] * 78;
     cut(2.5, 1.2 + d[1] * 2, 3.5, 22);
-    if (!m.hit && bite(5, 28)) { m.hit = true; P.dashes = ROSTER[who].dashes || 2; }
+    if (!m.hit && bite(5, 28)) { m.hit = true; P.dashes = maxDashes(); }
     if (m.t > .28) { P.vx *= .3; P.vy *= .2; P.vz *= .3; done(); }
     return true;
   }
@@ -2062,8 +2062,9 @@ function drawBrutePlayer(time) {
 const SUN_FLY = 3, SUN_BOOST = 4, SUN_GAZE = 9, SUN_REFILL = 45, SUN_MIN = 25;
 function stepSun(dt) {
   const gazing = P.cm?.name === 'beam';
-  if (P.flying) P.sun -= (P.leaping ? SUN_FLY + SUN_BOOST : SUN_FLY) * dt;
-  if (gazing) P.sun -= SUN_GAZE * dt;
+  const drain = perk('cells') ? .65 : 1;
+  if (P.flying) P.sun -= (P.leaping ? SUN_FLY + SUN_BOOST : SUN_FLY) * drain * dt;
+  if (gazing) P.sun -= SUN_GAZE * drain * dt;
   if (!P.flying && !gazing && P.grounded) P.sun += SUN_REFILL * dt;
   P.sun = clamp(debug ? 100 : P.sun, 0, 100);
   if (P.sun > 0) return;
@@ -2071,11 +2072,11 @@ function stepSun(dt) {
   if (gazing) { P.cm = null; P.beam = null; }
 }
 const FLARE_FALL = 220, FLARE_WIDE = 12;
-function drawSunPillar(x, top, low, z, time) {
+function drawSunPillar(x, top, low, z, time, wide = FLARE_WIDE) {
   const mid = (top + low) / 2, tall = Math.max(.1, top - low), pulse = 1 + Math.sin(time * 40) * .12;
   push(x, mid, z, 3, 2 * pulse, tall, 2 * pulse, time * 6, [1, 1, .85]);
   for (let i = 0; i < 18; i++) {
-    const a = i / 18 * 6.283 + time * 3, r = FLARE_WIDE * (i % 2 ? .8 : .5);
+    const a = i / 18 * 6.283 + time * 3, r = wide * (i % 2 ? .8 : .5);
     push(x + Math.sin(a) * r, mid, z + Math.cos(a) * r, 3, .45 * pulse, tall, .45 * pulse, a, i % 3 ? SUN : [1, .95, .6]);
   }
   if (low <= 0) for (let i = 0; i < 48; i++) {               // splashed across the ground
@@ -2127,7 +2128,7 @@ function haloActions(look) {
   if (pressed.has('KeyZ') && free && !P.held) { startCm('boom', { done: false }); style('kick', 12); say('SONIC BURST', .8); }
   if (pressed.has('KeyQ')) {
     if (P.style < 100) say('STYLE ' + (P.style | 0) + '%', .7);
-    else { spendUlt(); P.flying = true; startCm('flare', { r: 4, hit: false, tick: 0 }); say('SOLAR FLARE', 1.4); sfx(1, 700, 1.2); }
+    else { spendUlt(); P.flying = true; startCm('flare', { r: 4, hit: false, tick: 0, wide: FLARE_WIDE * (perk('flare') ? 1.5 : 1) }); say('SOLAR FLARE', 1.4); sfx(1, 700, 1.2); }
   }
 }
 
@@ -2258,7 +2259,7 @@ function haloMove(dt) {
       const was = m.low ?? P.y + 1.4;
       m.low = Math.max(0, was - FLARE_FALL * dt);
       for (let y = was - 7; y >= m.low; y -= 7) smash(P.x, y, P.z, 8, 30);
-      if (!m.hit && !E.dead && E.y < P.y && E.y + 3 > m.low && Math.hypot(E.x - P.x, E.z - P.z) < FLARE_WIDE + pad(foe)) { m.hit = true; E.inv = 0; damageEnemy(160); }
+      if (!m.hit && !E.dead && E.y < P.y && E.y + 3 > m.low && Math.hypot(E.x - P.x, E.z - P.z) < m.wide + pad(foe)) { m.hit = true; E.inv = 0; damageEnemy(160); }
       if (m.low === 0 && !m.landed) {
         m.landed = m.t;
         smash(P.x, 2, P.z, 18, 40); addCrater(P.x, P.z, 18); dust(P.x, 0, P.z, 90, 45); jolt(2, .1); sfx(1, 220, 1.4);
@@ -2380,7 +2381,11 @@ function drawHaloPlayer(time) {
     push(...mid, 3, .06, .06, l, yaw, [1, 1, .92], pitch);
     push(...P.beam.to, 3, 1.1 * flick, 1.1 * flick, 1.1 * flick, time * 9, [1, .92, .55], time * 7);
   }
-  if (m?.name === 'flare' && m.low !== undefined) drawSunPillar(P.x, P.y + 1.4, m.low, P.z, time);
+  if (m?.name === 'flare' && m.low !== undefined) drawSunPillar(P.x, P.y + 1.4, m.low, P.z, time, clamp(m.wide || FLARE_WIDE, 4, 20));
+  if (P.shield > 0) for (let i = 0; i < 40; i++) {           // the force field, thinning as it is worn down
+    const up = 1 - 2 * (i + .5) / 40, flat = Math.sqrt(1 - up * up), q = i * 2.39996 + time * 2, size = .05 + .1 * Math.min(1, P.shield / 20);
+    push(P.x + Math.sin(q) * flat * 2.3, P.y + 1.8 + up * 2.3, P.z + Math.cos(q) * flat * 2.3, 3, size, size, size, q, [.45, .85, 1], q);
+  }
   if (m?.name === 'flare') for (let i = 0; i < 200; i++) { const y = 1 - 2 * (i + .5) / 200, ring = Math.sqrt(1 - y * y), a = i * 2.39996 + time * 4;
     const py = P.y + 1.4 + y * m.r; if (py > 0) push(P.x + Math.sin(a) * ring * m.r, py, P.z + Math.cos(a) * ring * m.r, 3, m.r * .07, m.r * .07, .15, a, i % 4 ? SUN : [1, 1, .85]); }
   if (m?.name === 'charge') for (let i = 0; i < 12; i++) { const a = time * 13 + i * .52, r = 2.4 - (time * 4 + i * .3) % 1 * 2 * m.power;
@@ -2531,11 +2536,12 @@ function stepPlayer(dt) {
   if (!cooldownsOn()) P.rushCd = P.parryCd = P.padCd = P.trapCd = P.netCd = P.flashCd = P.ricCd = P.rollCd = 0;
   P.pumpCd -= dt; P.padCd -= dt; P.trapCd -= dt; P.netCd -= dt; P.flashCd -= dt; P.ricCd -= dt; P.rollCd -= dt; P.blindT -= dt;
   if (who === 'shoot') stepGadgets(dt);
+  stepPerks(dt);
   if (who === 'halo') stepSun(dt); else if (who === 'cinder') stepHeat(dt);
   if (pvp?.state?.s?.pad && Number.isFinite(pvp.state.s.pad.x)) bounce(pvp.state.s.pad); P.slashT -= dt; P.punch -= dt; P.wallLock -= dt; P.coyote -= dt; P.slideCd -= dt; P.jumpBuf -= dt;
   if (pressed.has('Space')) P.jumpBuf = .13;               // pressed slightly early still counts
   if (P.mantle) { stepMantle(dt); pressed.clear(); released.clear(); return; }
-  if (P.grounded) { P.coyote = .12; P.airJumps = 1; P.dashes = ROSTER[who].dashes || 2; P.glide = false; P.airPress = false; P.landT += dt; }
+  if (P.grounded) { P.coyote = .12; P.airJumps = 1; P.dashes = maxDashes(); P.glide = false; P.airPress = false; P.landT += dt; }
   actions();
   updateChain(dt);
   updateLash(dt);
@@ -2677,7 +2683,7 @@ function stepPlayer(dt) {
     const into = -(wx * nx + wz * nz);
     if (into > .35 && tryMantle(nx, nz, Math.max(speedIn, sprint ? 20 : 12))) { dropChain(false); pressed.clear(); released.clear(); return; }
     if (!P.wall && sprint && into > .35 && P.wallLock <= 0 && !blockedAt(P.x, P.y + .6, P.z)) {
-      dropChain(false); P.wall = wallN; P.airJumps = 1; P.dashes = ROSTER[who].dashes || 2; P.charge = -1; P.glide = false; P.slide = false;
+      dropChain(false); P.wall = wallN; P.airJumps = 1; P.dashes = maxDashes(); P.charge = -1; P.glide = false; P.slide = false;
     }
   }
   if (!P.wall && !ploughed) { if (hitX) P.vx = 0; if (hitZ) P.vz = 0; }
@@ -2729,6 +2735,64 @@ function step(dt) {
 // ───────────────────────── FIREBOI: the dual-sword rival ─────────────────────────
 const E = { max: 900 };
 let pvp = null;                           // the online match, when there is one
+
+// ── best of five: first to three rounds, and an upgrade for each fighter between rounds ──
+const WINS = 3, PICK_TIME = 30;
+// [id, name, what it does]. Where two fighters share an id, it works the same way for both.
+const UPGRADES = {
+  hero: [['power', 'Whetted Sickle', 'All your damage +10%'], ['dash', 'Spare Chain', 'One extra mid-air dash'], ['kindle', 'Head Start', 'Begin each round with 35% ultimate'], ['tough', 'Padded Wraps', 'Take 12% less damage']],
+  cinder: [['power', 'Hotter Blades', 'All your damage +10%'], ['thirst', 'Cauterise', 'Heal a fifth of the damage you deal'], ['dash', 'Second Flame', 'One extra mid-air dash'], ['kindle', 'Kindling', 'Begin each round with 35% ultimate']],
+  brute: [['plate', 'Heavy Plating', 'Take 15% less damage'], ['club', 'Spiked Tail', 'Tail Whack and counters hit 25% harder'], ['guard', 'Iron Guard', 'Brace stops 95% of a hit instead of 80%'], ['regen', 'Thick Hide', 'Slowly heal after 5 s without being hit']],
+  halo: [['field', 'Force Field', 'A shield worth a fifth of your health; returns after 8 s unhit'], ['cells', 'Deep Cells', 'Sunlight drains 35% slower'], ['flare', 'Wide Flare', 'Solar Flare\'s pillar is half as wide again'], ['lens', 'Focused Lens', 'Sun Gaze burns 30% harder']],
+  slash: [['power', 'Whetstone', 'All your damage +10%'], ['parry', 'Patient Guard', 'Parry window half as long again'], ['thirst', 'Bloodthirst', 'Heal a fifth of the damage you deal'], ['surge', 'Far Horizon', 'Ultimate charges 30% faster']],
+  shoot: [['blast', 'Heavy Shells', 'Siege Cannon blast radius 9 m to 22 m'], ['pulse', 'Shockwave', 'Right click during Siege Cannon blows enemies away'], ['mag', 'Extended Mag', 'Eighteen rounds instead of twelve'], ['deadeye', 'Deadeye', 'Headshots do double damage']],
+};
+const perk = id => !!pvp?.bo5 && pvp.perks.has(id);
+const maxDashes = () => (ROSTER[who].dashes || 2) + (perk('dash') ? 1 : 0);
+const maxAmmo = () => perk('mag') ? 18 : AMMO;
+// outside best of five her shells keep the wide blast
+const blastRadius = () => pvp?.bo5 && !perk('blast') ? 9 : SHELL_BLAST;
+const damagePerk = () => perk('power') ? 1.1 : perk('lens') && P.cm?.name === 'beam' ? 1.3 : perk('club') && P.cm?.name === 'punch' ? 1.25 : 1;
+// a hit on me, after toughness and any shield
+function soak(loss) {
+  P.calm = 0;
+  loss *= perk('plate') ? .85 : perk('tough') ? .88 : 1;
+  const took = Math.min(P.shield || 0, loss);
+  P.shield -= took;
+  return loss - took;
+}
+function stepPerks(dt) {
+  if (!pvp?.bo5 || truce.t > 0) return;
+  P.calm += dt;
+  if (perk('field') && P.calm > 8) P.shield = 20;
+  if (perk('regen') && P.calm > 5 && P.hp > 1) P.hp = Math.min(100, P.hp + 1.5 * dt);
+}
+// a moment after a round ends: choose an upgrade, or see who took the match
+function intermission() {
+  const over = Math.max(pvp.mine, pvp.theirs) >= WINS && pvp.mine !== pvp.theirs;
+  pvp.stage = over ? 'result' : 'pick'; pvp.pickT = PICK_TIME;
+  mode = 'pause'; keys.clear(); pressed.clear(); released.clear(); P.charge = -1;
+  if (locked()) document.exitPointerLock();
+  show(over ? 'result' : 'upgrade');
+  if (!over && !UPGRADES[who].some(u => !pvp.perks.has(u[0]))) pickUpgrade('');   // a long match can use them all up
+}
+function pickUpgrade(id) {
+  if (!pvp || pvp.stage !== 'pick' || pvp.myPick !== null) return;
+  if (id && (pvp.perks.has(id) || !UPGRADES[who].some(u => u[0] === id))) return;
+  pvp.myPick = id; if (id) pvp.perks.add(id);
+  netSend({ t: 'up', id });
+  show('upgrade'); upgradesReady();
+}
+// both have chosen (or both want another match): on with the next round
+function upgradesReady() {
+  const next = pvp.stage === 'pick' && pvp.myPick !== null && pvp.theirPick !== null;
+  const again = pvp.stage === 'result' && pvp.again && pvp.theyAgain;
+  if (!next && !again) return;
+  if (again) { pvp.mine = pvp.theirs = 0; pvp.perks.clear(); pvp.theirPerks.clear(); }
+  pvp.stage = ''; pvp.myPick = pvp.theirPick = null; pvp.again = pvp.theyAgain = false;
+  newRound(); resume();
+}
+const perkNames = (kind, owned) => UPGRADES[kind].filter(u => owned.has(u[0])).map(u => u[1]).join(', ') || 'none yet';
 const TRUCE = 5;
 const truce = { t: 0, over: false };      // over: the round has just been won, as opposed to about to start
 const startTruce = over => Object.assign(truce, { t: TRUCE, over });
@@ -2736,6 +2800,15 @@ function stepTruce(dt) {
   if (!(truce.t > 0)) return;
   E.cd = Math.max(E.cd || 0, .6);          // the computer holds its attacks
   const left = Math.ceil(truce.t);
+  if (pvp?.bo5 && truce.over) {
+    if (pvp.stage) {                                       // the next round waits for the choosing
+      truce.t = 1;
+      if (pvp.stage === 'pick' && pvp.myPick === null && (pvp.pickT -= dt) <= 0) pickUpgrade(UPGRADES[who].find(u => !pvp.perks.has(u[0]))?.[0] || '');
+      return;
+    }
+    if ((truce.t -= dt) < TRUCE - 2.5) intermission();
+    return;
+  }
   truce.t -= dt;
   if (truce.t > 0) { if (popup.t <= .1 || Math.ceil(truce.t) !== left) say((truce.over ? 'NEXT ROUND IN ' : 'FIGHT IN ') + Math.ceil(truce.t), .3); return; }
   truce.t = 0;
@@ -2766,7 +2839,7 @@ const ROSTER = {
     moves: [['mouse0', 'Twin Fangs', 'Three-cut combo'], ['mouse0', 'Fire Wheel (hold)', 'Spinning blades; you can still move'], ['mouse2', 'Ember Dash', 'Cut straight through anything'],
       ['KeyF', 'Comet Cleave', 'Leap and crash down on your aim'], ['KeyG', 'Cross Flare', 'A burning X that slices buildings'], ['KeyT', 'Phoenix Rise', 'Uppercut that launches'],
       ['KeyZ', 'Flicker', 'Blink a short way where you aim'], ['KeyQ', 'Ember Rain', 'Ultimate: blades fall from the sky']] },
-  brute: { name: 'TANKBOI', role: 'Colossal beast', stats: [3, 1, 2, 5], speed: .8, jump: 1, dashes: 1, ultRate: .8, armor: .62, power: 1.55, hp: 1500, netHp: 1120, size: 1.9, deal: .82, cool: .6, camH: 4.8, camD: 11, tempo: .75,
+  brute: { name: 'TANKBOI', role: 'Colossal beast', stats: [3, 1, 2, 5], speed: .8, jump: 1, dashes: 1, ultRate: .8, armor: .48, power: 1.55, hp: 1800, netHp: 1200, size: 1.9, deal: .82, cool: .6, camH: 4.8, camD: 11, tempo: .75,
     desc: 'A hulking beast on all fours, with iron gauntlets and an armoured tail. Slower than the rest and a far bigger target, but soaks up more punishment than anyone and resists being knocked around. Outlasts rather than out-damages.',
     moves: [['mouse0', 'Hammer Fists', 'Very fast alternating left and right'], ['mouse0', 'Tail Whack (hold)', 'Charge, release: a full turn that catches anyone around him; longer hits harder'], ['mouse2', 'Bull Rush / Stampede (hold)', 'Barely hurts, but leaves them stunned. Hold to carry them a short way. Cannot climb. 7 s cooldown with cooldowns on'],
       ['Space', 'Titan Leap (hold)', 'Tap to hop; charge and release to soar. The landing cracks the ground'],
@@ -2847,9 +2920,10 @@ function damageEnemy(dmg) {
   if (E.dead || E.inv > 0 || truce.t > 0) return;
   if (pvp) {
     E.inv = .14; E.hurtT = .18;
-    const sent = dmg * (ROSTER[who].deal || 1) * heatBoost();
+    const sent = dmg * (ROSTER[who].deal || 1) * heatBoost() * damagePerk();
+    if (perk('thirst')) P.hp = Math.min(100, P.hp + .2 * sent * ROSTER[foe].armor * 400 / (ROSTER[foe].netHp || ROSTER[foe].hp));
     buildHeat(dmg);
-    netSend({ t: 'hit', d: sent, x: P.x, z: P.z, r: who === 'shoot' && dmg <= RIFLE_DMG * HEAD_BONUS ? 1 : 0 });
+    netSend({ t: 'hit', d: sent, x: P.x, z: P.z, r: who === 'shoot' && dmg <= RIFLE_DMG * 2 ? 1 : 0 });
     chargeUlt(sent * ROSTER[foe].armor * 400 / (ROSTER[foe].netHp || ROSTER[foe].hp));
     for (let i = 0; i < 10; i++) debris(E.x, E.y + 1.6, E.z, rr(.1, .28), [1, .5, .15], rr(-14, 14), rr(0, 14), rr(-14, 14), rr(.2, .6));
     hitStop = Math.max(hitStop, .02); sfx(.6, 1800, .12);
@@ -2899,7 +2973,7 @@ function wreck(x, y, z, r, push = 18) { byEnemy = true; const n = carve(x, y, z,
 
 function hurtPlayer(dmg, fx, fz, knock = 18) {
   if (truce.t > 0 || debug || P.iframe > 0 || P.dash > 0 || P.kick || P.storm || P.cm?.name === 'dash') return false;   // dashing dodges
-  if (who === 'slash' && P.cm?.name === 'parry' && P.cm.t < PARRY_TIME) {
+  if (who === 'slash' && P.cm?.name === 'parry' && P.cm.t < PARRY_TIME * (perk('parry') ? 1.5 : 1)) {
     const dx = E.x - P.x, dz = E.z - P.z, d = Math.hypot(dx, dz) || 1;
     if (d < 12 && !E.dead) Object.assign(E, { vx: dx / d * 36, vz: dz / d * 36, vy: 14, stun: .8 });
     P.iframe = .4; say('PARRY!', .9); jolt(.8, .09); sfx(1, 3000, .3);
@@ -2907,8 +2981,9 @@ function hurtPlayer(dmg, fx, fz, knock = 18) {
     return false;
   }
   let loss = rawDamage ? dmg : dmg * ROSTER[foe].power * ROSTER[who].armor;
+  if (pvp?.bo5) loss = soak(loss);
   if (who === 'brute' && P.cm?.name === 'brace' && Math.cos(Math.atan2(fx - P.x, fz - P.z) - P.yaw) > .2) {
-    P.hp -= loss * BRACE_BLOCK; P.iframe = .3; P.cm.blocked = P.cm.t; jolt(.5, .05); sfx(.8, 1600, .15);
+    P.hp -= loss * (perk('guard') ? .05 : BRACE_BLOCK); P.iframe = .3; P.cm.blocked = P.cm.t; jolt(.5, .05); sfx(.8, 1600, .15);
     for (let i = 0; i < 8; i++) debris(P.x, P.y + 3, P.z, rr(.1, .2), [1, .9, .6], rr(-12, 12), rr(2, 12), rr(-12, 12), rr(.15, .4));
     if (P.hp <= 0) { if (pvp) pvpDown(); else { P.hp = 1; say('YOU FELL', 2); startTruce(true); popup.t = 1.5; } }
     return true;
@@ -5032,12 +5107,12 @@ function render(dt, time, alpha = 1) {
 // ───────────────────────── events + loop ─────────────────────────
 const locked = () => document.pointerLockElement === canvas;
 // ───────────────────────── online 1v1 (WebRTC, peer to peer) ─────────────────────────
-const PROTO = 10;
+const PROTO = 11;
 const PEER_LIB = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';   // only loaded when you go online
 const LOCAL_NET = new URLSearchParams(location.search).get('net') === 'local';   // two tabs on one computer, for testing
 // the parts of a fighter the other side needs in order to draw them
 const SHARED = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'yaw', 'phase', 'grounded', 'h', 'wall', 'charge', 'glide', 'dive', 'dash', 'slide', 'mantle', 'kick', 'meteor', 'orbit',
-  'chain', 'storm', 'cross', 'guill', 'whirl', 'act', 'punch', 'slashT', 'slashSide', 'carving', 'holding', 'lash', 'reel', 'spin', 'cm', 'leapCharge', 'leaping', 'flying', 'beam', 'wire', 'reelBlock', 'hurtT', 'style', 'hp', 'pad', 'trap', 'gun'];
+  'chain', 'storm', 'cross', 'guill', 'whirl', 'act', 'punch', 'slashT', 'slashSide', 'carving', 'holding', 'lash', 'reel', 'spin', 'cm', 'leapCharge', 'leaping', 'flying', 'beam', 'wire', 'reelBlock', 'hurtT', 'style', 'hp', 'pad', 'trap', 'gun', 'shield'];
 let link = null, netStatus = '', joinCode = '';
 function setStatus(text) { netStatus = text; const el = $('netstatus'); if (el) el.textContent = text; }
 const netSend = msg => { try { link?.send(msg); } catch {} };
@@ -5115,11 +5190,12 @@ function linkDown(why) {
 function linkUp(api, hosting) {
   link = api;
   setStatus('Connected. Starting…');
-  netSend({ t: 'hello', v: PROTO, kind: pickWho, hosting, cd: !!settings.cooldowns });
+  netSend({ t: 'hello', v: PROTO, kind: pickWho, hosting, cd: !!settings.cooldowns, bo: !!settings.bo5 });
 }
 
 function startPvp(theirKind, hosting) {
-  pvp = { hosting, carves: [], fx: [], theirThrows: new Map(), throwing: false, calling: '', pin: null, state: null, at: 0, ping: 0, mine: 0, theirs: 0, downAt: 0, pose: null, sent: 0 };
+  pvp = { hosting, carves: [], fx: [], theirThrows: new Map(), throwing: false, calling: '', pin: null, state: null, at: 0, ping: 0, mine: 0, theirs: 0, downAt: 0, pose: null, sent: 0,
+    bo5: false, stage: '', perks: new Set(), theirPerks: new Set(), myPick: null, theirPick: null, pickT: 0, again: false, theyAgain: false };
   applySettings(); pvp.pose = Object.assign({}, pose);
   setMatch(pickWho, theirKind);
   pvpSpawn();
@@ -5128,8 +5204,9 @@ function startPvp(theirKind, hosting) {
 }
 function pvpSpawn() {
   const z = pvp.hosting ? 0 : 36, yaw = pvp.hosting ? 0 : Math.PI;
-  Object.assign(P, { x: 0, y: 0, z, px: 0, py: 0, pz: z, vx: 0, vy: 0, vz: 0, yaw, hp: 100, iframe: 2, style: 0, flying: false, held: null, holding: null, chain: null, cm: null, cds: {}, sun: 100, heat: 0, empower: 0, vent: 0, burn: null });
+  Object.assign(P, { x: 0, y: 0, z, px: 0, py: 0, pz: z, vx: 0, vy: 0, vz: 0, yaw, hp: 100, iframe: 2, style: 0, flying: false, held: null, shield: 0, calm: 0, holding: null, chain: null, cm: null, cds: {}, sun: 100, heat: 0, empower: 0, vent: 0, burn: null });
   cam.yaw = yaw; pvp.pin = null;
+  Object.assign(P, { style: perk('kindle') ? 35 : 0, shield: perk('field') ? 20 : 0, dashes: maxDashes(), ammo: maxAmmo(), reload: 0 });
   Object.assign(E, { x: 0, y: 0, z: 36 - z, px: 0, py: 0, pz: 36 - z, dead: false, awake: true, state: 'idle', hp: E.max });
   startTruce(false);
 }
@@ -5149,15 +5226,28 @@ function onNet(m) {
     if (!ROSTER[m.kind] || pvp) return;
     startPvp(m.kind, !m.hosting);
     pvp.cooldowns = m.hosting ? !!m.cd : !!settings.cooldowns;
-    if (pvp.cooldowns) say('COOLDOWNS ON', 1.5);
+    pvp.bo5 = m.hosting ? !!m.bo : !!settings.bo5;
+    if (pvp.bo5) say('BEST OF 5  ·  FIRST TO ' + WINS + (pvp.cooldowns ? '  ·  COOLDOWNS ON' : ''), 2.4);
+    else if (pvp.cooldowns) say('COOLDOWNS ON', 1.5);
     return;
   }
   if (m.t === 'bye') return linkDown('The other player left.');
   if (!pvp) return;
   if (m.t === 'pick') {                                       // they changed fighter
-    if (!ROSTER[m.kind]) return;
+    if (!ROSTER[m.kind] || pvp.bo5) return;
     swapMatch(who, m.kind);
     if (screen === 'pause') show('pause');
+    return;
+  }
+  if (m.t === 'up') {                                         // their upgrade
+    if (!pvp.bo5 || pvp.theirPick !== null || m.id && !UPGRADES[foe].some(u => u[0] === m.id)) return;
+    pvp.theirPick = m.id || ''; if (m.id) pvp.theirPerks.add(m.id);
+    if (pvp.stage === 'pick') { show('upgrade'); upgradesReady(); }
+    return;
+  }
+  if (m.t === 'again') {
+    pvp.theyAgain = true;
+    if (pvp.stage === 'result') { show('result'); upgradesReady(); }
     return;
   }
   if (m.t === 'state' && m.s && typeof m.s === 'object') {
@@ -5191,7 +5281,7 @@ function onNet(m) {
     if (truce.t > 0) return;
     P.vx = num(m.x, -90, 90); P.vy = num(m.y, -20, 60); P.vz = num(m.z, -90, 90); P.grounded = false; P.flying = false;
   } else if (m.t === 'down') { pvp.mine++; say('YOU WIN THE ROUND  ·  ' + pvp.mine + ' - ' + pvp.theirs, 2.5); startTruce(true); popup.t = 1.5; }
-  else if (m.t === 'boom') explode(num(m.x, -400, 400), num(m.y, 0, 300), num(m.z, -400, 400));
+  else if (m.t === 'boom') explode(num(m.x, -400, 400), num(m.y, 0, 300), num(m.z, -400, 400), num(m.r, 5, SHELL_BLAST, SHELL_BLAST));
   else if (m.t === 'slide') landslide(num(m.x, -400, 400), num(m.y, 0, 300), num(m.z, -400, 400), num(m.yaw, -10, 10), false, true);
   else if (m.t === 'topple') {
     const b = buildings[m.i | 0];
@@ -5349,7 +5439,7 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } },
 };
 const saved0 = store.get(SET_KEY) || {};
-const settings = { quality: 0, cap60: true, volume: 1, fullscreen: true, debug: false, slow: 1, help: true, cooldowns: false, ...saved0, binds: { ...defaultBinds(), ...saved0.binds } };
+const settings = { quality: 0, cap60: true, volume: 1, fullscreen: true, debug: false, slow: 1, help: true, cooldowns: false, bo5: true, ...saved0, binds: { ...defaultBinds(), ...saved0.binds } };
 function applySettings() {
   quality = clamp(settings.quality | 0, 0, QUALITY.length - 1); cap60 = !!settings.cap60;
   debug = !!settings.debug && !pvp; timeScale = debug ? settings.slow : 1;
@@ -5396,6 +5486,7 @@ function swapMatch(mine, theirs) {
 const SCREENS = {
   swap: () => selectScreen('swap'),
   mp: () => `<div class="pane center"><h2>PLAY ONLINE</h2><p class="sub">You are ${ROSTER[pickWho].name}. One of you hosts, the other types the code.</p>
+    <div class="row"><span>Match (the host decides)</span><button data-act="rounds">${settings.bo5 ? 'Best of 5, with upgrades' : 'Endless'}</button></div>
     ${btn('Host a game', 'host', 'go')}
     <div class="row"><input id="code" maxlength="8" placeholder="ROOM CODE" value="${joinCode}" autocomplete="off" style="font:inherit;text-transform:uppercase;letter-spacing:3px;padding:9px;border-radius:8px;border:1px solid #6fb7ff44;background:#16213a;color:#fff"><button data-act="join">Join</button></div>
     <p id="netstatus" style="min-height:3em;color:#ffd25a">${netStatus}</p>
@@ -5409,8 +5500,15 @@ const SCREENS = {
   },
   who: () => selectScreen('who'),
   foe: () => selectScreen('foe'),
+  upgrade: () => `<div class="pane center"><h2>CHOOSE AN UPGRADE</h2>
+    <p class="sub">Score ${pvp.mine} - ${pvp.theirs} · first to ${WINS}<br>Yours: ${perkNames(who, pvp.perks)}<br>${ROSTER[foe].name}: ${perkNames(foe, pvp.theirPerks)}</p>
+    ${pvp.myPick === null ? UPGRADES[who].filter(u => !pvp.perks.has(u[0])).map(([id, name, what]) => `<button class="wide" data-act="upgrade" data-id="${id}"><b>${name}</b><br><small>${what}</small></button>`).join('') + `<p class="sub">You have ${PICK_TIME} seconds; after that the first one is taken.</p>`
+      : '<p style="color:#ffd25a">Waiting for the other player to choose…</p>'}
+    ${btn('Leave match', 'main')}</div>`,
+  result: () => `<div class="pane center"><h2>${pvp.mine > pvp.theirs ? 'YOU WIN THE MATCH' : 'YOU LOSE THE MATCH'}</h2><p class="sub">${ROSTER[who].name} ${pvp.mine} - ${pvp.theirs} ${ROSTER[foe].name}</p>
+    ${pvp.again ? '<p style="color:#ffd25a">Waiting for the other player…</p>' : btn(pvp.theyAgain ? 'Rematch (they are ready)' : 'Rematch', 'again', 'go')}${btn('Leave match', 'main')}</div>`,
   pause: () => pvp ? `<div class="pane center"><h2>ONLINE MATCH</h2><p class="sub">${ROSTER[who].name} vs ${ROSTER[foe].name} · ${pvp.mine} - ${pvp.theirs} · ping ${pvp.ping} ms · the match keeps running</p>
-    ${btn('Back to the fight', 'resume', 'go')}${btn('Change fighter', 'swap')}${btn('Options', 'options')}${btn('Leave match', 'main')}</div>` : `<div class="pane center"><h2>PAUSED</h2><p class="sub">${ROSTER[who].name} vs ${foeName()}${notice ? ' · ' + notice : ''}</p>
+    ${btn('Back to the fight', 'resume', 'go')}${pvp.bo5 ? `<p class="sub">Best of 5 · your upgrades: ${perkNames(who, pvp.perks)}</p>` : btn('Change fighter', 'swap')}${btn('Options', 'options')}${btn('Leave match', 'main')}</div>` : `<div class="pane center"><h2>PAUSED</h2><p class="sub">${ROSTER[who].name} vs ${foeName()}${notice ? ' · ' + notice : ''}</p>
     ${btn('Resume', 'resume', 'go')}${btn('Change fighter / rival', 'change')}${btn('Save game', 'save')}${btn('Rematch (rival returns in front of you)', 'rematch')}${btn('Rebuild city', 'rebuild')}${btn('Options', 'options')}${btn('Main menu', 'main')}</div>`,
   options() {
     const row = (label, ctl) => `<div class="row"><span>${label}</span>${ctl}</div>`;
@@ -5507,6 +5605,9 @@ const ACT = {
   new() { online = false; pickWho = 'hero'; show('who'); },
   multi() { online = true; netStatus = ''; show('who'); },
   host() { openRoom(true); },
+  rounds() { joinCode = $('code').value; settings.bo5 = !settings.bo5; applySettings(); show('mp'); },
+  upgrade(id) { pickUpgrade(id); },
+  again() { if (!pvp) return; pvp.again = true; netSend({ t: 'again' }); show('result'); upgradesReady(); },
   join() { joinCode = $('code').value; openRoom(false, joinCode); },
   card(id) { if (screen === 'who') pickWho = id; else if (screen === 'swap') swapPick = id; else pickFoe = id; show(screen); },
   change() { online = false; pickWho = who; pickFoe = foe; show('who'); },
@@ -5528,6 +5629,7 @@ const ACT = {
     else if (screen === 'options') show(optionsFrom);
     else if (screen === 'foe') show('who');
     else if (screen === 'mp') { netClose(); show('who'); }
+    else if (screen === 'upgrade' || screen === 'result') return;          // these are left by their buttons
     else if (screen === 'swap' || screen === 'who' && mode === 'pause') show('pause');
     else show('main');
   },
@@ -5662,7 +5764,7 @@ function frame(now) {
   if (statT > .5) {
     const fps = frames / statT;
     $('stats').textContent = `${fps.toFixed(0)} fps${cap60 ? ' (cap 60)' : ''} · ${canvas.width}×${canvas.height}\nGPU: ${gpuName} · ${QUALITY[quality][0]}\n${(staticCount + dynCount + lifeCount).toLocaleString()} boxes\n`
-      + `${Math.hypot(P.vx, P.vy, P.vz).toFixed(0)} m/s · alt ${P.y.toFixed(0)} m\ndash ${'◆'.repeat(P.dashes)}${'◇'.repeat(Math.max(0, (ROSTER[who].dashes || 2) - P.dashes))}` + (who === 'brute' ? `\nrush ${P.rushCd > 0 ? Math.ceil(P.rushCd) + 's' : 'ready'}` : '')
+      + `${Math.hypot(P.vx, P.vy, P.vz).toFixed(0)} m/s · alt ${P.y.toFixed(0)} m\ndash ${'◆'.repeat(P.dashes)}${'◇'.repeat(Math.max(0, (maxDashes()) - P.dashes))}` + (who === 'brute' ? `\nrush ${P.rushCd > 0 ? Math.ceil(P.rushCd) + 's' : 'ready'}` : '')
       + (debug ? `\n\nDEBUG  style full, endless dash + jump\nspeed x${timeScale}\nanim ${P.act?.name || '-'} · pos ${P.x.toFixed(0)}, ${P.y.toFixed(0)}, ${P.z.toFixed(0)}` : '');
     frames = 0; statT = 0;
   }
