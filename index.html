@@ -2049,7 +2049,8 @@ function drawBrutePlayer(time) {
     push(P.x + Math.sin(a) * r, P.y + 2.4 + Math.sin(i * 2.4) * 1.2, P.z + Math.cos(a) * r, 3, .18, .18, .18, a, AMBER); }
 }
 
-const GAZE_WIDTH = 2.6;                    // a forgiving stare: her damage comes from keeping it on them
+const GAZE_WIDTH = 2;                      // how close to them the stare has to pass to burn
+const GAZE_ASSIST = .07, GAZE_PULL = .4;    // aim assist, not auto aim: within about 4 degrees of the crosshair the beam leans a little toward them
 const SUN_FLY = 3, SUN_BOOST = 4, SUN_GAZE = 5, SUN_REFILL = 45, SUN_MIN = 25;
 function stepSun(dt) {
   const gazing = P.cm?.name === 'beam';
@@ -2180,7 +2181,14 @@ function haloMove(dt) {
     const look = lookDir(), eyes = [P.x + Math.sin(P.yaw) * .4, P.y + 2.35, P.z + Math.cos(P.yaw) * .4];
     const aim = raycast(aimOrigin(look), look, 90);
     let to = aim ? aim.p : [0, 1, 2].map(i => cam.pos[i] + look[i] * 100);
-    const d = to.map((v, i) => v - eyes[i]), l = Math.hypot(...d) || 1, u = d.map(v => v / l);
+    const d = to.map((v, i) => v - eyes[i]);
+    let l = Math.hypot(...d) || 1, u = d.map(v => v / l);
+    // a little aim assist: a rival close to the crosshair pulls the stare onto them
+    const r = sub([E.x, E.y + 1.5, E.z], eyes), rl = Math.hypot(...r) || 1;
+    if (!E.dead && rl < 90 && dot(r, u) / rl > Math.cos(GAZE_ASSIST)) {
+      const w = u.map((v, i) => v * (1 - GAZE_PULL) + r[i] / rl * GAZE_PULL), wl = Math.hypot(...w) || 1;
+      u = w.map(v => v / wl); l = Math.max(l, rl + 2); to = eyes.map((v, i) => v + u[i] * l);
+    }
     const first = raycast(eyes, u, l);
     if (first) to = first.p;
     P.beam = { from: eyes, to };
@@ -2264,7 +2272,7 @@ function haloMove(dt) {
   return P.flying;
 }
 
-// LIGHTBOI is a drone: a floating core with one great lens, solar wings, a spinning ring and two hands that fly on their own
+// LIGHTBOT™ is a drone: a floating core with one great lens, solar wings, a spinning ring and two hands that fly on their own
 function drawHalo(v, time) {
   const S = 1.2, m = v.move, on = v.state === 'wind' || v.state === 'act', act = v.state === 'act', t = v.t || 0;
   const hs = Math.hypot(v.vx || 0, v.vz || 0), vy = v.vy || 0, air = v.flying || !v.grounded;
@@ -2817,7 +2825,7 @@ let who = 'hero', foe = 'cinder';          // fighter you control, fighter you f
 // one table drives the select screen, the help panel, the HUD and the rival's AI
 // stats: power / speed / reach / toughness out of 5. moves: [action, name, what it does]
 const ROSTER = {
-  hero: { name: 'CHAINBOI', role: 'Kusarigama drifter', stats: [3, 5, 5, 2], speed: 1.18, jump: 1, armor: .78, power: 1.52, hp: 1100, netHp: 1060, size: .8, deal: 1.65, netDeal: 1.26, camH: 2.65, camD: 6, tempo: 1.12,
+  hero: { name: 'CHAINBOI', role: 'Kusarigama drifter', stats: [3, 5, 5, 2], speed: 1.18, jump: 1, armor: .78, power: 1.52, hp: 1100, netHp: 1060, size: .8, deal: 1.65, netDeal: 1.21, camH: 2.65, camD: 6, tempo: 1.12,
     desc: 'A masked wanderer who lives off the ground. The sickle flies out on its chain to cut, hook and swing; the claw ball is the counterweight. Fragile, but nobody moves across the city like this.',
     moves: [['mouse0', 'Sickle combo', 'Three cuts or throws, and the fourth click is a spinning Cyclone'], ['mouse0', 'Crossfall (hold)', 'Swipe, swipe, then an overhead slam'],
       ['mouse2', 'Chain (hold)', 'Hooks what you aim at: swing from anything overhead'],
@@ -2837,7 +2845,7 @@ const ROSTER = {
       ['KeyZ', 'Titan Kick (hold)', 'Charge and release: a front kick that launches'],
       ['KeyX', 'Brace (hold)', 'Blocks most damage from the front while you creep. Let go right after a hit to counter with the tail'],
       ['KeyQ', 'Cataclysm / Ragdoll', 'Ultimate. While holding the rival: swing and slam them again and again']] },
-  halo: { name: 'LIGHTBOI', role: 'Sun-powered combat drone', stats: [3, 5, 4, 2], speed: 1.15, jump: 1, armor: 1.05, power: 1.55, hp: 1050, netHp: 1300, size: .9, deal: 1.15, netDeal: 1.7, cool: .3, camH: 3.1, camD: 7.5, tempo: 1.1,
+  halo: { name: 'LIGHTBOT™', role: 'Sun-powered combat drone', stats: [3, 5, 4, 2], speed: 1.15, jump: 1, armor: 1.05, power: 1.55, hp: 1050, netHp: 1300, size: .9, deal: 1.15, netDeal: 1.74, cool: .3, camH: 3.1, camD: 7.5, tempo: 1.1,
     desc: 'A flying machine that drinks sunlight and shrugs off gravity, but flight and the stare spend it; stand still on something to refill. Fights from any height, burns lines through towers with a stare, and can carry almost anything into the sky before letting go.',
     moves: [['Space', 'Flight', 'Take off; in the air you fly where you look. Jump rises, crouch descends'], ['ShiftLeft', 'Boost', 'Hold while flying to tear through buildings'],
       ['mouse0', 'Solar Strikes', 'Alternating punches'], ['mouse0', 'Comet Punch (hold)', 'Charge, release and fly through them'], ['mouse2', 'Sun Gaze (hold)', 'Twin beams that cut what you look at'],
@@ -2849,7 +2857,7 @@ const ROSTER = {
       ['mouse2', 'Air Dash Cut', 'Slice along your aim; a hit gives the dash back'], ['KeyC', 'Blade Surf', 'Slide on the sword; hold against a wall to ride down it'],
       ['KeyF', 'Skysplitter', 'One long downward slash. Right after a Rising Cut lands, it homes in'], ['KeyG', 'Sword Wave', 'A flying crescent; walls stop it'], ['KeyT', 'Rising Cut', 'Launch them into the air'],
       ['KeyZ', 'Parry', 'A split second that turns any hit back. 1.5 s cooldown with cooldowns on'], ['KeyQ', 'Horizon Cut', 'Ultimate: aim the warning line with the mouse. The sky darkens and a diagonal cut slices a tower apart']] },
-  shoot: { name: 'SHOOTYGAL', role: 'Mercenary gunslinger', stats: [4, 5, 5, 2], speed: 1.22, jump: 1.05, armor: .88, power: 1.45, hp: 1100, netHp: 990, size: .8, deal: 1.1, netDeal: 1.32, camH: 3, camD: 7, tempo: 1.05,
+  shoot: { name: 'SHOOTYGAL', role: 'Mercenary gunslinger', stats: [4, 5, 5, 2], speed: 1.22, jump: 1.05, armor: .88, power: 1.45, hp: 1100, netHp: 990, size: .8, deal: 1.1, netDeal: 1.31, camH: 3, camD: 7, tempo: 1.05,
     desc: 'The quickest on her feet, with a scoped rifle, a shotgun and a bag of tricks. Wants room to aim; hates being grabbed hold of up close. Twelve rounds, then she reloads.',
     moves: [['mouse0', 'Fire', 'Rifle: one precise round. Shotgun: brutal up close, weak at range'], ['mouse0', 'Triple burst (hold)', 'Rifle only: three quick rounds'], ['mouse2', 'Scope (hold)', 'Rifle only: zoom in and walk'], ['KeyV', 'Switch weapon', 'Rifle or shotgun'],
       ['KeyT', 'Jump pad', 'Launches whoever steps on it'], ['KeyF', 'Trip mine', 'Arms itself, then throws them into the air'], ['KeyG', 'Net', 'Shoves them back; stops a charge dead'],
