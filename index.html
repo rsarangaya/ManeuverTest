@@ -1598,7 +1598,7 @@ function haloMove(dt) {
     m.hurt -= dt;
     if (m.hurt <= 0 && !E.dead) {
       const p = sub([E.x, E.y + 1.5, E.z], eyes), k = clamp(dot(p, u), 0, Math.hypot(...sub(to, eyes)) + 2);
-      if (Math.hypot(p[0] - u[0] * k, p[1] - u[1] * k, p[2] - u[2] * k) < 2 + pad(foe)) { m.hurt = .12; E.inv = 0; damageEnemy(6); }
+      if (Math.hypot(p[0] - u[0] * k, p[1] - u[1] * k, p[2] - u[2] * k) < 2 + pad(foe)) { m.hurt = .12; E.inv = 0; damageEnemy(6.6); }
     }
     if (!keys.has('mouse2') || m.t > 3) done();
     if (P.flying) { brake(4); return true; }
@@ -2063,26 +2063,26 @@ let who = 'hero', foe = 'cinder';          // fighter you control, fighter you f
 // one table drives the select screen, the help panel, the HUD and the rival's AI
 // stats: power / speed / reach / toughness out of 5. moves: [action, name, what it does]
 const ROSTER = {
-  hero: { name: 'CHAINBOI', role: 'Kusarigama drifter', stats: [3, 5, 5, 2], speed: 1.18, jump: 1, armor: .72, power: 1.55, hp: 1180, size: .8, deal: 1.68, camH: 2.65, camD: 6, tempo: 1.12,
+  hero: { name: 'CHAINBOI', ultRate: 0.18, role: 'Kusarigama drifter', stats: [3, 5, 5, 2], speed: 1.18, jump: 1, armor: .72, power: 1.55, hp: 1180, size: .8, deal: 1.68, camH: 2.65, camD: 6, tempo: 1.12,
     desc: 'A masked wanderer who lives off the ground. The sickle flies out on its chain to cut, hook and swing; the claw ball is the counterweight. Fragile, but nobody moves across the city like this.',
     moves: [['mouse0', 'Sickle combo', 'Three cuts or throws, and the fourth click is a spinning Cyclone'], ['mouse0', 'Crossfall (hold)', 'Swipe, swipe, then an overhead slam'],
       ['mouse2', 'Chain (hold)', 'Hooks what you aim at: swing from anything overhead'],
       ['KeyR', 'Reel in', 'While hooked: go to the ground or a car or wall; people are dragged to you'], ['KeyF', 'Ground pound / Meteor Drop', 'In the air, hurls the ball down and follows it'],
       ['KeyG', 'Reel-In / Wrecking Ball', 'Yank out a block, then hold to whirl and throw'], ['KeyT', 'Topple', 'Pull over a tower with a damaged base. Huge damage if it lands on the rival'],
       ['KeyZ', 'Tripwire', 'Set two ends, press again to rip them out'], ['KeyX', 'Orbit (hold)', 'Circle a standing tower you are close to, slicing it'], ['KeyQ', 'Reaper Sphere', 'Ultimate: a full sphere of blades']] },
-  cinder: { name: 'FIREBOI', role: 'Twin-blade ember knight', stats: [4, 4, 3, 3], speed: 1.1, jump: 1, armor: .9, power: 1.55, hp: 1240, size: 1, deal: 1.15, camH: 4.3, camD: 10, tempo: 1.05,
+  cinder: { name: 'FIREBOI', ultRate: 0.45, role: 'Twin-blade ember knight', stats: [4, 4, 3, 3], speed: 1.1, jump: 1, armor: .9, power: 1.55, hp: 1240, size: 1, deal: 1.15, camH: 4.3, camD: 10, tempo: 1.05,
     desc: 'A horned knight in charred plate with a molten blade in each hand. Relentless in close, with fire waves for anyone who tries to keep their distance.',
     moves: [['mouse0', 'Twin Fangs', 'Three-cut combo'], ['mouse0', 'Fire Wheel (hold)', 'Spinning blades; you can still move'], ['mouse2', 'Ember Dash', 'Cut straight through anything'],
       ['KeyF', 'Comet Cleave', 'Leap and crash down on your aim'], ['KeyG', 'Cross Flare', 'A burning X that slices buildings'], ['KeyT', 'Phoenix Rise', 'Uppercut that launches'],
       ['KeyZ', 'Flicker', 'Blink, behind your rival if near'], ['KeyQ', 'Ember Rain', 'Ultimate: blades fall from the sky']] },
-  brute: { name: 'TANKBOI', role: 'Colossal brawler', stats: [4, 1, 2, 3], speed: .8, jump: 1, dashes: 1, ultRate: .55, armor: 1.24, power: 1.44, hp: 750, netHp: 1500, size: 1.9, deal: 1.08, cool: .6, camH: 4.8, camD: 11, tempo: .75,
+  brute: { name: 'TANKBOI', role: 'Colossal brawler', stats: [4, 1, 2, 3], speed: .8, jump: 1, dashes: 1, ultRate: .4, armor: 1.24, power: 1.44, hp: 750, netHp: 1500, size: 1.9, deal: 1.08, cool: .6, camH: 4.8, camD: 11, tempo: .75,
     desc: 'A mountain of muscle in iron gauntlets. Slower than the rest and a far bigger target, but soaks up punishment, resists being knocked around and hits harder than anyone.',
     moves: [['mouse0', 'Hammer Fists', 'Very fast alternating left and right'], ['mouse0', 'Titan Punch (hold)', 'Charge, release; longer hits harder'], ['mouse2', 'Bull Rush / Stampede (hold)', 'Barely hurts, but leaves them stunned. Hold to carry them a short way. Cannot climb. 7 s cooldown'],
       ['Space', 'Titan Leap (hold)', 'Tap to hop; charge and release to soar. The landing cracks the ground'],
       ['KeyF', 'Landslide', 'Rip up the street and send a rolling wall of rubble'], ['KeyG', 'Grab / Throw', 'Seize the rival, a car, a bystander or rubble; press again or attack to throw'], ['KeyT', 'Thunderclap', 'A ranged shockwave that grows as it flies'],
       ['KeyZ', 'Titan Kick (hold)', 'Charge and release: a front kick that launches'],
       ['KeyQ', 'Cataclysm / Ragdoll', 'Ultimate. While holding the rival: swing and slam them again and again']] },
-  halo: { name: 'LIGHTBOI', role: 'Sun-charged skyfarer', stats: [4, 5, 4, 3], speed: 1.15, jump: 1, armor: 1.15, power: 1.5, hp: 1120, size: .9, deal: .88, cool: .3, camH: 3.1, camD: 7.5, tempo: 1.1,
+  halo: { name: 'LIGHTBOI', ultRate: 0.4, role: 'Sun-charged skyfarer', stats: [4, 5, 4, 3], speed: 1.15, jump: 1, armor: 1.15, power: 1.5, hp: 1120, size: .9, deal: .88, cool: .3, camH: 3.1, camD: 7.5, tempo: 1.1,
     desc: 'Drinks sunlight and shrugs off gravity. Fights from any height, burns lines through towers with a stare, and can carry almost anything into the sky before letting go.',
     moves: [['Space', 'Flight', 'Take off; in the air you fly where you look. Jump rises, crouch descends'], ['ShiftLeft', 'Boost', 'Hold while flying to tear through buildings'],
       ['mouse0', 'Solar Strikes', 'Alternating punches'], ['mouse0', 'Comet Punch (hold)', 'Charge, release and fly through them'], ['mouse2', 'Sun Gaze (hold)', 'Twin beams that cut what you look at'],
