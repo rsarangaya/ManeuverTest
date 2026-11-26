@@ -167,20 +167,33 @@ function raycast(o, d, max) {
 
 // ───────────────────────── destruction ─────────────────────────
 const debrisQueue = [];
+// Online, particles my fighter makes are noted here and replayed on the other screen.
+// Destruction is not noted: the other side repeats the carve and gets its own rubble.
+let fxLog = null;                          // a list only while my own fighter is being simulated
+const tidy = v => Math.round(v * 10) / 10;
+function noteFx(...a) {
+  if (fxLog && fxLog.length < (a[0] === 'd' || a[0] === 'f' ? 70 : 100)) fxLog.push(a.map(v => typeof v === 'number' ? tidy(v) : v));
+}
+function quietly(make) { const log = fxLog; fxLog = null; try { return make(); } finally { fxLog = log; } }
 function debris(x, y, z, size, col, vx, vy, vz, life) {
+  if (fxLog) noteFx('d', x, y, z, size, col.map(tidy), vx, vy, vz, life);
   if (debrisQueue.length >= NDEB) return;
   debrisQueue.push([x, y, z, size, vx, vy, vz, life, col[0], col[1], col[2], rr(0, 6)]);
 }
 function dust(x, y, z, n, speed) {
-  for (let i = 0; i < n; i++) {
-    const a = i / n * Math.PI * 2 + rr(0, .3), s = speed * rr(.6, 1.2);
-    debris(x, y + .3, z, rr(.25, .8), [.62, .6, .57], Math.cos(a) * s, rr(2, 9), Math.sin(a) * s, rr(.5, 1.3));
-  }
+  if (fxLog) noteFx('u', x, y, z, n, speed);
+  quietly(() => {
+    for (let i = 0; i < n; i++) {
+      const a = i / n * Math.PI * 2 + rr(0, .3), s = speed * rr(.6, 1.2);
+      debris(x, y + .3, z, rr(.25, .8), [.62, .6, .57], Math.cos(a) * s, rr(2, 9), Math.sin(a) * s, rr(.5, 1.3));
+    }
+  });
 }
 
 let byEnemy = false;
 // Remove every voxel within radius r of (x,y,z). Returns number removed.
 function carve(x, y, z, r, push = 14) {
+  if (fxLog) return quietly(() => carve(x, y, z, r, push));
   let removed = 0;
   if (!byEnemy) strikeEnemy(x, y, z, r);
   if (pvp && !remoteCarve && pvp.carves.length < 60) pvp.carves.push([+x.toFixed(2), +y.toFixed(2), +z.toFixed(2), +r.toFixed(2), push | 0]);
@@ -303,7 +316,7 @@ const cam = { yaw: .7, pitch: -.05, dist: 10, shake: 0, fov: 70, pos: [0, 5, -10
 const P = {};
 function resetPlayer() {
   Object.assign(P, { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: .7, grounded: true, wall: null,
-    charge: -1, airJumps: 1, dashes: 2, dash: 0, dashDir: [0,0,1], act: null, cm: null, leapCharge: -1, leaping: false, rushCd: 0, stunT: 0, cooled: true, held: null, flying: false, beam: null, swings: 0, hp: 100, iframe: 0, hurtT: 0, style: 0, zipT: 0, atkBuf: 0, hold: 0, cross: null, crossUsed: false, spin: null, chainHits: 0, lastHit: -9, storm: null, meteor: null, guill: null, kick: null, orbit: null, wire: null,
+    charge: -1, airJumps: 1, dashes: 2, dash: 0, dashDir: [0,0,1], act: null, cm: null, leapCharge: -1, leaping: false, rushCd: 0, stunT: 0, ultLock: 0, cooled: true, held: null, flying: false, beam: null, swings: 0, hp: 100, iframe: 0, hurtT: 0, style: 0, zipT: 0, atkBuf: 0, hold: 0, cross: null, crossUsed: false, spin: null, chainHits: 0, lastHit: -9, storm: null, meteor: null, guill: null, kick: null, orbit: null, wire: null,
     reelBlock: null, whirl: null, carving: null, wasCarving: false, carveY: undefined, slashSide: 1, glide: false, dive: false, apex: 0,
     punch: 0, cool: 0, phase: 0, holding: null, coyote: 0, wallLock: 0, spaceAir: 0,
     h: 2, slide: false, slideCd: 0, mantle: null, jumpBuf: 0, landT: 1, airPress: false, px: 0, py: 0, pz: 0, chain: null, lash: null, reel: null, slashT: 0 });
@@ -315,7 +328,7 @@ const blockedAt = (x, y, z, h = P.h) => hit(x - W, y, z - W, x + W, y + h, z + W
 const thrown = [];
 const craters = new Float32Array(16 * 4);
 let craterHead = 0;
-function addCrater(x, z, r) { craters.set([x, z, r, 1], craterHead * 4); craterHead = (craterHead + 1) % 16; }
+function addCrater(x, z, r) { if (fxLog) noteFx('c', x, z, r); craters.set([x, z, r, 1], craterHead * 4); craterHead = (craterHead + 1) % 16; }
 
 // move along one axis; on contact, bisect up to the surface
 function moveAxis(axis, d) {
@@ -483,8 +496,6 @@ function constrain(dt) {
 // blade lash: shoots out in a sweeping arc, cutting whatever the tip passes through
 function startLash(cut = true) {
   P.lash = { t: 0, yaw: cam.yaw, pitch: cam.pitch, side: P.lash ? -P.lash.side : (P.side = -(P.side || -1)), last: null, cut };
-  const dx = E.x - P.x, dz = E.z - P.z, off = Math.atan2(Math.sin(Math.atan2(dx, dz) - cam.yaw), Math.cos(Math.atan2(dx, dz) - cam.yaw));
-  if (cut && enemyNear(24) && Math.abs(off) < .6) { P.lash.yaw = cam.yaw + off; P.lash.pitch = Math.atan2(E.y - P.y, Math.hypot(dx, dz)); }
   P.reel = null; P.yaw = cam.yaw; P.punch = .16;
   P.swings = (P.swings + 1) % 3;                            // sidearm, backhand, overhand
   act(P.swings === 2 ? 'throw' : P.lash.side > 0 ? 'forehand' : 'backhand', .27);
@@ -515,7 +526,8 @@ function updateLash(dt) {
 // wide cut with the sickle, three bites across the arc
 function sickle(look) {
   P.slashT = .14;
-  if (enemyNear(6)) { P.yaw = Math.atan2(E.x - P.x, E.z - P.z); damageEnemy(P.swings === 1 ? 14 : 9); }   // soft lock
+  P.yaw = cam.yaw;
+  if (enemyNear(6) && facingEnemy()) damageEnemy(P.swings === 1 ? 14 : 9);
   P.swings = (P.swings + 1) % 3;                            // forehand, backhand, overhead
   P.slashSide = P.swings === 2 ? -1 : 1;
   act(['chop', 'forehand', 'backhand'][P.swings], .27); P.yaw = cam.yaw; P.lash = P.reel = null; style('slash', 5);
@@ -535,9 +547,16 @@ const NAMES = { crossfall: 'CROSSFALL', meteor: 'METEOR DROP', guillotine: 'GUIL
 let debug = false, timeScale = 1;
 let history = [], popup = { text: '', t: 0 }, hitStop = 0, clock = 0;
 function say(text, t = 1.1) { popup = { text, t }; }
+// The ultimate charges from damage that lands on the rival, plus a very slow trickle.
+const ULT_PER_DAMAGE = 1.6;               // ult % for each 1% of their health bar taken
+const ULT_TRICKLE = 100 / 600;            // % per second: ten minutes from empty
+const ULT_LOCK = 5;                       // an ultimate's own hits do not recharge it
+function chargeUlt(share) {
+  if (!(P.ultLock > 0)) P.style = Math.min(100, P.style + share * ULT_PER_DAMAGE * (ROSTER[who].ultRate || 1));
+}
+const spendUlt = () => { P.style = 0; P.ultLock = ULT_LOCK; };
 function style(move, pts = 8) {
   const last = history[history.length - 1];
-  P.style = Math.min(100, P.style + pts * (last && last.move === move ? .5 : 1.7) * (ROSTER[who].ultRate || 1));
   history.push({ move, at: clock });
   history = history.filter(h => clock - h.at < 6).slice(-8);
   if (NAMES[move]) say(NAMES[move]);
@@ -548,7 +567,7 @@ function style(move, pts = 8) {
       if (m === seq[n]) n--;
     }
     if (n < 0 && seq[seq.length - 1] === (move === 'kick' ? 'dash' : move)) {
-      P.style = Math.min(100, P.style + 30 * (ROSTER[who].ultRate || 1)); say(name + '!', 1.6); history = [];
+      say(name + '!', 1.6); history = [];
     }
   }
 }
@@ -601,8 +620,7 @@ const CF = { a: .18, b: .36, up: .52, hit: .64, end: .86 };
 const ease01 = v => { const k = clamp(v, 0, 1); return k * k * (3 - 2 * k); };
 const lerp = (a, b, k) => a + (b - a) * k;
 function startCross() {
-  let yaw = cam.yaw;
-  if (enemyNear(16)) yaw = Math.atan2(E.x - P.x, E.z - P.z);
+  const yaw = cam.yaw;
   P.cross = { t: 0, yaw, hits: 0, slammed: false };
   P.crossUsed = true; P.lash = P.reel = null; P.slashT = 0; P.act = null; P.yaw = yaw;
   style('crossfall', 14); sfx(.5, 1500, .2);
@@ -670,7 +688,7 @@ function spherePoint(angle, tilt, r) {         // a point on a tilted great circ
 }
 function startStorm() {
   if (P.style < 100) { say('STYLE ' + (P.style | 0) + '%', .7); return; }
-  dropChain(false); P.style = 0; P.storm = { t: 0, a: 0, r: 4, cd: 0, hit: false };
+  dropChain(false); spendUlt(); P.storm = { t: 0, a: 0, r: 4, cd: 0, hit: false };
   P.cross = P.lash = P.orbit = null; P.wall = null;
   style('storm', 0); sfx(1, 500, 1);
 }
@@ -805,7 +823,7 @@ function crush(f, reach) {
   const under = f.parts.some(q => { const p = fallerPoint(f, q); return Math.abs(p[1] - E.y - 1.5) < reach + 1 && Math.hypot(p[0] - E.x, p[2] - E.z) < reach + pad(foe); });
   if (!under) return;
   f.crushed = true;
-  if (pvp) netSend({ t: 'crush', x: P.x, z: P.z });
+  if (pvp) { netSend({ t: 'crush', x: P.x, z: P.z }); chargeUlt(35); }
   else {
     E.guard = 0; E.poked = 0; E.inv = 0; damageEnemy(TOPPLE_DAMAGE);
     if (!E.dead) { E.vy = -10; E.stun = 1.2; E.vx *= .2; E.vz *= .2; }
@@ -847,7 +865,7 @@ function updateMoves(dt) {
   if (debug) { P.style = 100; P.dashes = ROSTER[who].dashes || 2; P.airJumps = 1; }
   if (P.act && (P.act.t += dt) >= P.act.dur) P.act = null;
   P.zipT -= dt; popup.t -= dt;
-  if (P.style < 100) P.style = Math.max(0, P.style - dt * (P.grounded && Math.hypot(P.vx, P.vz) < 10 ? 1.5 : .25) * (ROSTER[who].ultRate ? .3 : 1));
+  P.ultLock -= dt; P.style = Math.min(100, P.style + ULT_TRICKLE * dt);
 
   updateCross(dt);
   updateSpin(dt);
@@ -973,7 +991,23 @@ function specialMove(dt, wx, wz, crouchKey) {
   return false;
 }
 
-const aimYaw = r => enemyNear(r) ? Math.atan2(E.x - P.x, E.z - P.z) : cam.yaw;
+// No auto-aim: everything goes where you point it.
+const aimYaw = () => cam.yaw;
+// melee only connects with what is in front of you (or right on top of you)
+function facingEnemy(yaw = P.yaw, half = 1.2) {
+  const dx = E.x - P.x, dz = E.z - P.z, off = Math.atan2(dx, dz) - yaw;
+  return Math.hypot(dx, dz) < 2.5 + Math.max(0, pad(foe)) || Math.abs(Math.atan2(Math.sin(off), Math.cos(off))) < half;
+}
+// what the crosshair is on: the rival's body, else the city, else open air
+function aimPoint(range) {
+  const look = lookDir(), o = aimOrigin(look), r = raycast(o, look, range), at = t => o.map((v, i) => v + look[i] * t);
+  if (!E.dead) {
+    const d = [E.x - o[0], E.y + 1.6 - o[1], E.z - o[2]], t = dot(d, look);
+    if (t > 0 && t < range && (!r || t < r.t + 1.5) && Math.hypot(d[0] - look[0] * t, d[1] - look[1] * t, d[2] - look[2] * t) < 1.6 + Math.max(0, pad(foe)))
+      return { p: at(t), hit: true, rival: true };
+  }
+  return { p: r ? r.p : at(range), hit: !!r, rival: false };
+}
 function startCm(name, extra = {}) {
   P.cm = { name, t: 0, n: 0, spin: P.yaw, cd: 0, ...extra };
   P.yaw = cam.yaw; P.act = null;
@@ -998,16 +1032,13 @@ function cinderActions(look) {
     P.dashDir = [look[0] / l, y / l, look[2] / l]; style('dash', 5); sfx(.35, 1500, .25);
   }
   if (pressed.has('KeyF') && free) {                       // Comet Cleave
-    const r = raycast(aimOrigin(look), look, 80);
-    let to = r ? r.p : [P.x + Math.sin(cam.yaw) * 25, P.y, P.z + Math.cos(cam.yaw) * 25];
-    if (enemyNear(45) && Math.hypot(E.x - to[0], E.z - to[2]) < 14) to = [E.x, E.y, E.z];
+    const a = aimPoint(80);
+    const to = a.rival ? [E.x, E.y, E.z] : a.hit ? a.p : [P.x + Math.sin(cam.yaw) * 25, P.y, P.z + Math.cos(cam.yaw) * 25];
     P.wall = null; P.vy = 44; P.grounded = false;
     startCm('leap', { to, slammed: false }); style('meteor', 16); say('COMET CLEAVE', .8);
   }
   if (pressed.has('KeyG') && free) {                       // Cross Flare
-    const r = raycast(aimOrigin(look), look, 120);
-    const t = enemyNear(90) && Math.abs(Math.atan2(Math.sin(Math.atan2(E.x - P.x, E.z - P.z) - cam.yaw), Math.cos(Math.atan2(E.x - P.x, E.z - P.z) - cam.yaw))) < .3
-      ? [E.x, E.y + 1.6, E.z] : r ? r.p : [0, 1, 2].map(i => cam.pos[i] + look[i] * 120);
+    const t = aimPoint(120).p;
     const from = [P.x, P.y + 1.9, P.z], d = t.map((v, i) => v - from[i]), l = Math.hypot(...d) || 1;
     waves.push({ p: from, v: d.map(v => v / l * 62), yaw: Math.atan2(d[0], d[2]), life: 1.5, cd: 0, mine: true, hit: false });
     startCm('wave'); style('reel', 8); sfx(.8, 900, .4);
@@ -1015,23 +1046,21 @@ function cinderActions(look) {
   if (pressed.has('KeyT') && free) { startCm('rise', { hit: false }); P.vy = 36; P.grounded = false; style('kick', 12); say('PHOENIX RISE', .8); }
   if (pressed.has('KeyZ') && free) {                       // Flicker
     let spot = null;
-    if (enemyNear(40)) spot = [E.x - Math.sin(E.yaw) * 3.5, E.y, E.z - Math.cos(E.yaw) * 3.5];
     for (let d = 22; d > 4 && !spot; d -= 3) {
       const p = [P.x + look[0] * d, Math.max(0, P.y + look[1] * d), P.z + look[2] * d];
       if (!blockedAt(p[0], p[1], p[2], H)) spot = p;
     }
     if (spot && !blockedAt(spot[0], spot[1], spot[2], H)) {
       dust(P.x, P.y, P.z, 14, 9); [P.x, P.y, P.z] = spot; P.px = P.x; P.py = P.y; P.pz = P.z; dust(P.x, P.y, P.z, 14, 9);
-      if (enemyNear(8)) cam.turnTo = Math.atan2(E.x - P.x, E.z - P.z);   // Flicker: swing round gently
       P.iframe = .25; P.wall = null; startCm('blink'); style('zip', 8); sfx(.5, 3000, .2);
     }
   }
   if (pressed.has('KeyQ')) {                               // ultimate: Ember Rain
     if (P.style < 100) say('STYLE ' + (P.style | 0) + '%', .7);
     else {
-      const r = raycast(aimOrigin(look), look, 90);
-      const c = enemyNear(80) ? [E.x, E.y, E.z] : r ? r.p : [P.x + look[0] * 30, P.y, P.z + look[2] * 30];
-      callRain(...c, 22, true); P.style = 0; startCm('rain'); say('EMBER RAIN', 1.4); sfx(1, 600, 1);
+      const a = aimPoint(90);
+      const c = a.rival ? [E.x, E.y, E.z] : a.hit ? a.p : [P.x + look[0] * 30, P.y, P.z + look[2] * 30];
+      callRain(...c, 22, true); spendUlt(); startCm('rain'); say('EMBER RAIN', 1.4); sfx(1, 600, 1);
     }
   }
 }
@@ -1048,8 +1077,8 @@ function cinderMove(dt) {
   const bite = (r, dmg) => { if (enemyNear(r)) { E.inv = 0; damageEnemy(dmg); return true; } return false; };
   if (m.name === 'combo') {
     P.yaw = m.aim; P.punch = .08;
-    if (!m.done && m.t > .06) { m.done = true; cut(3.2, 1.6, 3.2); bite(6, m.n === 2 ? 22 : 13); }
-    if (enemyNear(14) && !enemyNear(3.5) && m.t < .1 && P.grounded) { P.x += 0; P.vx = Math.sin(P.yaw) * 26; P.vz = Math.cos(P.yaw) * 26; }
+    if (!m.done && m.t > .06) { m.done = true; cut(3.2, 1.6, 3.2); if (facingEnemy()) bite(6, m.n === 2 ? 22 : 13); }
+    if (enemyNear(14) && !enemyNear(3.5) && facingEnemy(P.yaw, .5) && m.t < .1 && P.grounded) { P.vx = Math.sin(P.yaw) * 26; P.vz = Math.cos(P.yaw) * 26; }
     if (m.t > MY_TIMES.combo + .1) done();
     return false;
   }
@@ -1133,7 +1162,7 @@ function grab(look) {
   let car = nearest(cars, 9), civ = nearest(civs, 7.5);
   // whichever is closer to hand
   if (car && civ) { if (Math.hypot(civ.x - P.x, civ.z - P.z) < Math.hypot(car.x - P.x, car.z - P.z)) car = null; else civ = null; }
-  if (enemyNear(8)) {
+  if (enemyNear(8) && facingEnemy(cam.yaw, 1.1)) {
     P.held = { type: 'rival', t: 0 }; E.awake = true; E.inv = 0; damageEnemy(10); say('GOT ' + ROSTER[foe].name, .9);
   } else if (car) { car.held = true; car.wreck = 0; car.flung = false; P.held = { type: 'car', o: car, t: 0 }; }
   else if (civ) { civ.held = true; civ.down = 0; civ.flung = false; P.held = { type: 'civ', o: civ, t: 0 }; }
@@ -1173,10 +1202,8 @@ function throwHeld(look) {
   P.held = null; E.swing = 0;
   const from = holdPoint();
   if (h.type === 'rival') Object.assign(E, { x: from[0], y: from[1] - 1, z: from[2], px: from[0], py: from[1] - 1, pz: from[2] });
-  const ahead = !E.dead && h.type !== 'rival' && Math.hypot(E.x - P.x, E.z - P.z) < 90 &&
-    Math.abs(Math.atan2(Math.sin(Math.atan2(E.x - P.x, E.z - P.z) - cam.yaw), Math.cos(Math.atan2(E.x - P.x, E.z - P.z) - cam.yaw))) < .35;
-  const r = raycast(aimOrigin(look), look, 220);
-  const to = ahead ? [E.x, E.y + 1.5, E.z] : r ? r.p : [0, 1, 2].map(i => cam.pos[i] + look[i] * 220);
+  const r = h.type === 'rival' && raycast(aimOrigin(look), look, 220);     // a thrown rival cannot be aimed at himself
+  const to = h.type !== 'rival' ? aimPoint(220).p : r ? r.p : [0, 1, 2].map(i => cam.pos[i] + look[i] * 220);
   const d = to.map((v, i) => v - from[i]), l = Math.hypot(...d) || 1, u = d.map(v => v / l);
   const speed = { car: 82, civ: 48, rock: 115, rival: 80 }[h.type];
   const [vx, vy, vz] = [u[0] * speed, u[1] * speed + (h.type === 'rock' ? 0 : 8), u[2] * speed];
@@ -1311,10 +1338,10 @@ function bruteActions(look) {
   if (pressed.has('KeyT') && free && !P.held) { startCm('clap', { done: false }); style('tripwire', 14); say('THUNDERCLAP', .8); }
   if (pressed.has('KeyQ') && P.held?.type === 'rival' && P.cm?.name !== 'ragdoll') {
     if (P.style < 100) say('STYLE ' + (P.style | 0) + '%', .7);
-    else { P.style = 0; startCm('ragdoll', { n: 0, u: 0 }); say('RAGDOLL', 1.4); sfx(1, 300, 1); }
+    else { spendUlt(); startCm('ragdoll', { n: 0, u: 0 }); say('RAGDOLL', 1.4); sfx(1, 300, 1); }
   } else if (pressed.has('KeyQ') && P.cm?.name !== 'ragdoll') {
     if (P.style < 100) say('STYLE ' + (P.style | 0) + '%', .7);
-    else { P.style = 0; startCm('quake', { rings: 0 }); say('CATACLYSM', 1.4); sfx(1, 200, 1.2); }
+    else { spendUlt(); startCm('quake', { rings: 0 }); say('CATACLYSM', 1.4); sfx(1, 200, 1.2); }
   }
 }
 function bruteMove(dt) {
@@ -1331,9 +1358,9 @@ function bruteMove(dt) {
     if (!m.done && m.t > .05) {
       m.done = true;
       if (smash(P.x + Math.sin(P.yaw) * 3.8 + Math.cos(P.yaw) * side * 1.2, P.y + 2.6, P.z + Math.cos(P.yaw) * 3.8 - Math.sin(P.yaw) * side * 1.2, 3.8, 30)) sfx(.8, 600, .18);
-      bite(7, 22);
+      if (facingEnemy()) bite(7, 22);
     }
-    if (enemyNear(18) && !enemyNear(4.5) && m.t < .1) { P.vx = Math.sin(P.yaw) * 44; P.vz = Math.cos(P.yaw) * 44; }
+    if (enemyNear(18) && !enemyNear(4.5) && facingEnemy(P.yaw, .5) && m.t < .1) { P.vx = Math.sin(P.yaw) * 44; P.vz = Math.cos(P.yaw) * 44; }
     if (m.t > .17) done();
     return false;
   }
@@ -1347,7 +1374,7 @@ function bruteMove(dt) {
       m.done = true;
       const p = m.power;
       for (let d = 4; d <= 6 + p * 12; d += 4) front(d, 2.3, 4.5 + p * 2.5, 40);
-      if (bite(9 + p * 8, 40 + p * 60) && !E.dead) { E.vx = Math.sin(P.yaw) * 60; E.vz = Math.cos(P.yaw) * 60; E.vy = 20; E.stun = .7; }
+      if (facingEnemy() && bite(9 + p * 8, 40 + p * 60) && !E.dead) { E.vx = Math.sin(P.yaw) * 60; E.vz = Math.cos(P.yaw) * 60; E.vy = 20; E.stun = .7; }
       dust(P.x + Math.sin(P.yaw) * 6, P.y, P.z + Math.cos(P.yaw) * 6, 40, 24); jolt(1.3, .12); style('crossfall', 14);
     }
     P.vy = Math.max(P.vy - 38 * dt, -75);
@@ -1407,8 +1434,7 @@ function bruteMove(dt) {
     if (!m.done && m.t > .1) {
       m.done = true;
       const look = lookDir(), from = [P.x + Math.sin(cam.yaw) * 3, P.y + 3, P.z + Math.cos(cam.yaw) * 3];
-      let to = [0, 1, 2].map(i => cam.pos[i] + look[i] * 90);
-      if (enemyNear(80) && Math.abs(Math.atan2(Math.sin(aimYaw(80) - cam.yaw), Math.cos(aimYaw(80) - cam.yaw))) < .35) to = [E.x, E.y + 2, E.z];
+      const to = aimPoint(90).p;
       shockwave(from, to, true);
       P.yaw = cam.yaw; dust(from[0], P.y, from[2], 30, 20); jolt(1, .08); sfx(1, 900, .6);
     }
@@ -1438,7 +1464,7 @@ function bruteMove(dt) {
     if (!m.done && m.t > .07) {
       m.done = true;
       for (let d = 4; d <= 5 + p * 5; d += 3) smash(P.x + fx * d, P.y + 2.4, P.z + fz * d, 3.4 + p * 1.6, 44);
-      if (bite(8.5 + p * 3, 30 + p * 50) && !E.dead) Object.assign(E, { vx: fx * (65 + p * 60), vz: fz * (65 + p * 60), vy: 15 + p * 12, stun: 1 + p * .6, flung: true });
+      if (facingEnemy() && bite(8.5 + p * 3, 30 + p * 50) && !E.dead) Object.assign(E, { vx: fx * (65 + p * 60), vz: fz * (65 + p * 60), vy: 15 + p * 12, stun: 1 + p * .6, flung: true });
       dust(P.x + fx * 5, P.y, P.z + fz * 5, 30 + p * 30 | 0, 22); jolt(.8 + p * .8, .07 + p * .08); sfx(1, 320, .6); style('kick', 14);
     }
     if (m.t > .36) done();
@@ -1512,9 +1538,8 @@ function haloActions(look) {
     P.dashDir = [look[0] / l, y / l, look[2] / l]; style('dash', 5); sfx(.35, 1500, .25);
   }
   if (pressed.has('KeyF') && free) {
-    const r = raycast(aimOrigin(look), look, 140);
-    let to = r ? r.p : [P.x + Math.sin(cam.yaw) * 40, 0, P.z + Math.cos(cam.yaw) * 40];
-    if (enemyNear(70) && (Math.hypot(E.x - to[0], E.z - to[2]) < 20 || Math.abs(Math.atan2(Math.sin(aimYaw(70) - cam.yaw), Math.cos(aimYaw(70) - cam.yaw))) < .3)) to = [E.x, E.y, E.z];
+    const a = aimPoint(140);
+    const to = a.rival ? [E.x, E.y, E.z] : a.hit ? a.p : [P.x + Math.sin(cam.yaw) * 40, 0, P.z + Math.cos(cam.yaw) * 40];
     if (P.grounded) P.vy = 30;
     startCm('dive', { to }); style('meteor', 16); say('SKYFALL', .8);
   }
@@ -1523,7 +1548,7 @@ function haloActions(look) {
   if (pressed.has('KeyZ') && free && !P.held) { startCm('boom', { done: false }); style('kick', 12); say('SONIC BURST', .8); }
   if (pressed.has('KeyQ')) {
     if (P.style < 100) say('STYLE ' + (P.style | 0) + '%', .7);
-    else { P.style = 0; P.flying = true; startCm('flare', { r: 4, hit: false, tick: 0 }); say('SOLAR FLARE', 1.4); sfx(1, 700, 1.2); }
+    else { spendUlt(); P.flying = true; startCm('flare', { r: 4, hit: false, tick: 0 }); say('SOLAR FLARE', 1.4); sfx(1, 700, 1.2); }
   }
 }
 
@@ -1559,10 +1584,9 @@ function haloMove(dt) {
   const brake = k => { P.vx *= 1 - k * dt; P.vz *= 1 - k * dt; if (P.flying) P.vy *= 1 - k * dt; };
   if (m.name === 'combo') {
     P.yaw = m.aim; P.punch = .08;
-    if (!m.done && m.t > .05) { m.done = true; if (front(3, 1.5, 3, 26)) sfx(.7, 800, .15); bite(5.5, 15); }
-    if (enemyNear(20) && !enemyNear(3.5) && m.t < .1) {       // closes the gap, in any direction
-      const d = [E.x - P.x, E.y - P.y, E.z - P.z], l = Math.hypot(...d) || 1;
-      P.vx = d[0] / l * 48; P.vz = d[2] / l * 48; if (P.flying) P.vy = d[1] / l * 48;
+    if (!m.done && m.t > .05) { m.done = true; if (front(3, 1.5, 3, 26)) sfx(.7, 800, .15); if (facingEnemy()) bite(5.5, 15); }
+    if (enemyNear(20) && !enemyNear(3.5) && facingEnemy(P.yaw, .5) && m.t < .1) {       // lunges the way you point
+      P.vx = Math.sin(P.yaw) * 48; P.vz = Math.cos(P.yaw) * 48; if (P.flying) P.vy = Math.sin(cam.pitch) * 48;
     }
     if (m.t > .16) done();
     return P.flying;
@@ -2049,8 +2073,10 @@ function stepThrown(dt) {
 
 function step(dt) {
   P.px = P.x; P.py = P.y; P.pz = P.z;   // for render interpolation
+  fxLog = pvp ? pvp.fx : null;                              // note my particles for the opponent
   stepPlayer(dt);
   stepThrown(dt);
+  fxLog = null;
   stepFallers(dt);
   stepEnemy(dt);
 }
@@ -2063,26 +2089,26 @@ let who = 'hero', foe = 'cinder';          // fighter you control, fighter you f
 // one table drives the select screen, the help panel, the HUD and the rival's AI
 // stats: power / speed / reach / toughness out of 5. moves: [action, name, what it does]
 const ROSTER = {
-  hero: { name: 'CHAINBOI', ultRate: 0.13, role: 'Kusarigama drifter', stats: [3, 5, 5, 2], speed: 1.18, jump: 1, armor: .72, power: 1.55, hp: 1180, size: .8, deal: 1.68, camH: 2.65, camD: 6, tempo: 1.12,
+  hero: { name: 'CHAINBOI', role: 'Kusarigama drifter', stats: [3, 5, 5, 2], speed: 1.18, jump: 1, armor: .72, power: 1.55, hp: 1180, size: .8, deal: 1.68, camH: 2.65, camD: 6, tempo: 1.12,
     desc: 'A masked wanderer who lives off the ground. The sickle flies out on its chain to cut, hook and swing; the claw ball is the counterweight. Fragile, but nobody moves across the city like this.',
     moves: [['mouse0', 'Sickle combo', 'Three cuts or throws, and the fourth click is a spinning Cyclone'], ['mouse0', 'Crossfall (hold)', 'Swipe, swipe, then an overhead slam'],
       ['mouse2', 'Chain (hold)', 'Hooks what you aim at: swing from anything overhead'],
       ['KeyR', 'Reel in', 'While hooked: go to the ground or a car or wall; people are dragged to you'], ['KeyF', 'Ground pound / Meteor Drop', 'In the air, hurls the ball down and follows it'],
       ['KeyG', 'Reel-In / Wrecking Ball', 'Yank out a block, then hold to whirl and throw'], ['KeyT', 'Topple', 'Pull over a tower with a damaged base. Huge damage if it lands on the rival'],
       ['KeyZ', 'Tripwire', 'Set two ends, press again to rip them out'], ['KeyX', 'Orbit (hold)', 'Circle a standing tower you are close to, slicing it'], ['KeyQ', 'Reaper Sphere', 'Ultimate: a full sphere of blades']] },
-  cinder: { name: 'FIREBOI', ultRate: 0.45, role: 'Twin-blade ember knight', stats: [4, 4, 3, 3], speed: 1.1, jump: 1, armor: .9, power: 1.55, hp: 1240, size: 1, deal: 1.15, camH: 4.3, camD: 10, tempo: 1.05,
+  cinder: { name: 'FIREBOI', role: 'Twin-blade ember knight', stats: [4, 4, 3, 3], speed: 1.1, jump: 1, armor: .9, power: 1.55, hp: 1240, size: 1, deal: 1.15, camH: 4.3, camD: 10, tempo: 1.05,
     desc: 'A horned knight in charred plate with a molten blade in each hand. Relentless in close, with fire waves for anyone who tries to keep their distance.',
     moves: [['mouse0', 'Twin Fangs', 'Three-cut combo'], ['mouse0', 'Fire Wheel (hold)', 'Spinning blades; you can still move'], ['mouse2', 'Ember Dash', 'Cut straight through anything'],
       ['KeyF', 'Comet Cleave', 'Leap and crash down on your aim'], ['KeyG', 'Cross Flare', 'A burning X that slices buildings'], ['KeyT', 'Phoenix Rise', 'Uppercut that launches'],
-      ['KeyZ', 'Flicker', 'Blink, behind your rival if near'], ['KeyQ', 'Ember Rain', 'Ultimate: blades fall from the sky']] },
-  brute: { name: 'TANKBOI', role: 'Colossal brawler', stats: [4, 1, 2, 3], speed: .8, jump: 1, dashes: 1, ultRate: .4, armor: 1.24, power: 1.44, hp: 750, netHp: 1500, size: 1.9, deal: 1.08, cool: .6, camH: 4.8, camD: 11, tempo: .75,
+      ['KeyZ', 'Flicker', 'Blink a short way where you aim'], ['KeyQ', 'Ember Rain', 'Ultimate: blades fall from the sky']] },
+  brute: { name: 'TANKBOI', role: 'Colossal brawler', stats: [4, 1, 2, 3], speed: .8, jump: 1, dashes: 1, ultRate: .8, armor: 1.24, power: 1.44, hp: 750, netHp: 1500, size: 1.9, deal: 1.08, cool: .6, camH: 4.8, camD: 11, tempo: .75,
     desc: 'A mountain of muscle in iron gauntlets. Slower than the rest and a far bigger target, but soaks up punishment, resists being knocked around and hits harder than anyone.',
     moves: [['mouse0', 'Hammer Fists', 'Very fast alternating left and right'], ['mouse0', 'Titan Punch (hold)', 'Charge, release; longer hits harder'], ['mouse2', 'Bull Rush / Stampede (hold)', 'Barely hurts, but leaves them stunned. Hold to carry them a short way. Cannot climb. 7 s cooldown'],
       ['Space', 'Titan Leap (hold)', 'Tap to hop; charge and release to soar. The landing cracks the ground'],
       ['KeyF', 'Landslide', 'Rip up the street and send a rolling wall of rubble'], ['KeyG', 'Grab / Throw', 'Seize the rival, a car, a bystander or rubble; press again or attack to throw'], ['KeyT', 'Thunderclap', 'A ranged shockwave that grows as it flies'],
       ['KeyZ', 'Titan Kick (hold)', 'Charge and release: a front kick that launches'],
       ['KeyQ', 'Cataclysm / Ragdoll', 'Ultimate. While holding the rival: swing and slam them again and again']] },
-  halo: { name: 'LIGHTBOI', ultRate: 0.4, role: 'Sun-charged skyfarer', stats: [4, 5, 4, 3], speed: 1.15, jump: 1, armor: 1.15, power: 1.5, hp: 1120, size: .9, deal: .88, cool: .3, camH: 3.1, camD: 7.5, tempo: 1.1,
+  halo: { name: 'LIGHTBOI', role: 'Sun-charged skyfarer', stats: [4, 5, 4, 3], speed: 1.15, jump: 1, armor: 1.15, power: 1.5, hp: 1120, size: .9, deal: .88, cool: .3, camH: 3.1, camD: 7.5, tempo: 1.1,
     desc: 'Drinks sunlight and shrugs off gravity. Fights from any height, burns lines through towers with a stare, and can carry almost anything into the sky before letting go.',
     moves: [['Space', 'Flight', 'Take off; in the air you fly where you look. Jump rises, crouch descends'], ['ShiftLeft', 'Boost', 'Hold while flying to tear through buildings'],
       ['mouse0', 'Solar Strikes', 'Alternating punches'], ['mouse0', 'Comet Punch (hold)', 'Charge, release and fly through them'], ['mouse2', 'Sun Gaze (hold)', 'Twin beams that cut what you look at'],
@@ -2137,7 +2163,9 @@ function damageEnemy(dmg) {
   if (E.dead || E.inv > 0) return;
   if (pvp) {
     E.inv = .14; E.hurtT = .18;
-    netSend({ t: 'hit', d: dmg * (ROSTER[who].deal || 1), x: P.x, z: P.z });
+    const sent = dmg * (ROSTER[who].deal || 1);
+    netSend({ t: 'hit', d: sent, x: P.x, z: P.z });
+    chargeUlt(sent * ROSTER[foe].armor * 400 / (ROSTER[foe].netHp || ROSTER[foe].hp));
     for (let i = 0; i < 10; i++) debris(E.x, E.y + 1.6, E.z, rr(.1, .28), [1, .5, .15], rr(-14, 14), rr(0, 14), rr(-14, 14), rr(.2, .6));
     hitStop = Math.max(hitStop, .02); sfx(.6, 1800, .12);
     return;
@@ -2155,7 +2183,8 @@ function damageEnemy(dmg) {
     E.poked++; E.pokeT = 3;
   }
   if (E.state === 'rest') dmg *= 1.5;                       // punish window after his attacks
-  E.hp -= dmg * (ROSTER[who].deal || 1) / trim(); E.inv = .12; E.hurtT = .18;
+  const taken = Math.min(E.hp, dmg * (ROSTER[who].deal || 1) / trim());
+  E.hp -= taken; E.inv = .12; E.hurtT = .18; chargeUlt(taken / E.max * 100);
   for (let i = 0; i < 10; i++) debris(E.x, E.y + 1.6, E.z, rr(.1, .28), [1, .5, .15], rr(-14, 14), rr(0, 14), rr(-14, 14), rr(.2, .6));
   hitStop = Math.max(hitStop, .03); sfx(.6, 1800, .12);
   if (dmg >= (foe === 'brute' ? 40 : 18) && !(E.poise > 0) && (E.state === 'wind' || E.state === 'rest')) {   // heavy hits knock him out of it
@@ -2188,7 +2217,6 @@ function hurtPlayer(dmg, fx, fz, knock = 18) {
   if (!steady || dmg >= 22) { dropChain(false); P.spin = P.cm = P.cross = P.orbit = P.guill = P.meteor = P.wall = null; P.dive = P.slide = false; }
   if (steady) knock *= .35;
   P.vx = dx / d * knock; P.vz = dz / d * knock; P.vy = Math.max(P.vy, steady ? 4 : 11); P.grounded = false;
-  P.style = Math.max(0, P.style - 12);
   cam.shake = Math.max(cam.shake, .9); hitStop = Math.max(hitStop, .07); sfx(.9, 500, .25);
   if (P.hp <= 0 && pvp) { pvpDown(); return true; }
   if (P.hp <= 0) {                                          // back to the plaza; the city keeps its scars
@@ -2232,7 +2260,7 @@ function callRain(x, y, z, n, mine, vx = 0, vz = 0) {
     const spread = i ? 4 + Math.random() * 11 : 0, a = i * 2.4 + Math.random();
     const px = x + vx * .35 * (i % 3) + Math.sin(a) * spread, pz = z + vz * .35 * (i % 3) + Math.cos(a) * spread;
     const ground = raycast([px, y + 40, pz], [0, -1, 0], y + 45);
-    rain.push({ x: px, z: pz, floor: ground ? ground.p[1] : 0, y: y + 55, delay: .35 + i * .07, mine, track: mine && i % 3 === 0 });
+    rain.push({ x: px, z: pz, floor: ground ? ground.p[1] : 0, y: y + 55, delay: .35 + i * .07, mine });
   }
 }
 function stepShots(dt) {
@@ -2271,7 +2299,6 @@ function stepShots(dt) {
     const d = rain[i];
     if (!d.mine && !fighting) continue;
     if ((d.delay -= dt) > 0) {
-      if (d.track && !E.dead) { const k = Math.min(1, dt * 9); d.x += (E.x - d.x) * k; d.z += (E.z - d.z) * k; d.floor = E.y; }
       continue;
     }
     d.y -= 120 * dt;
@@ -2400,7 +2427,9 @@ function stepEnemy(dt) {
   P.iframe -= dt; P.hurtT -= dt;
   if (!pvp && P.iframe < -4 && P.hp < 100) P.hp = Math.min(100, P.hp + dt * 12);        // recover when left alone
   E.inv -= dt; E.hurtT -= dt; if (pvp) E.dazed -= dt;
+  fxLog = pvp ? pvp.fx : null;
   stepShots(dt);
+  fxLog = null;
   stepSlides(dt);
   if (pvp) return remoteStep(dt);                           // a person is driving the rival
   if (E.dead || !fighting) return;
@@ -2487,16 +2516,20 @@ const EMBER = FIRE.EMBER, CORE = FIRE.CORE;
 let flames = [], fxDt = 0;
 const BLAZE = { fire: [[1, .78, .2], [1, .48, .05], [.7, .12, .02]], frost: [[.9, .98, 1], [.32, .72, 1], [.1, .26, .85]] };
 function flame(x, y, z, vx, vy, vz, size, life, pal) {
+  if (fxLog) noteFx('f', x, y, z, vx, vy, vz, size, life);
   if (flames.length < 900) flames.push({ x, y, z, vx, vy, vz, size, life, max: life, col: pal === FROST ? BLAZE.frost : BLAZE.fire });
 }
 const often = rate => { const n = rate * fxDt; return (n | 0) + (Math.random() < n % 1 ? 1 : 0); };
 // a ring of fire bursting from the ground, with embers that linger
 function erupt(x, y, z, r, pal) {
+  if (fxLog) noteFx('e', x, y, z, r);
+  quietly(() => {
   for (let i = 0; i < 90; i++) {
     const a = rr(0, 6.283), d = i < 55 ? r * rr(.75, 1) : r * rr(0, .6);
     flame(x + Math.sin(a) * d, y + rr(0, 1), z + Math.cos(a) * d, Math.sin(a) * rr(0, 5), rr(6, 22), Math.cos(a) * rr(0, 5), rr(.5, 1.3), rr(.3, .75), pal);
   }
   for (let i = 0; i < 40; i++) { const a = rr(0, 6.283), d = r * Math.sqrt(Math.random()); flame(x + Math.sin(a) * d, y + .2, z + Math.cos(a) * d, 0, rr(.3, 1.2), 0, rr(.4, .9), rr(.8, 1.8), pal); }
+  });
 }
 function drawFlames() {
   for (let i = flames.length - 1; i >= 0; i--) {
@@ -3878,7 +3911,7 @@ function render(dt, time, alpha = 1) {
 // ───────────────────────── events + loop ─────────────────────────
 const locked = () => document.pointerLockElement === canvas;
 // ───────────────────────── online 1v1 (WebRTC, peer to peer) ─────────────────────────
-const PROTO = 1;
+const PROTO = 2;
 const PEER_LIB = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';   // only loaded when you go online
 const LOCAL_NET = new URLSearchParams(location.search).get('net') === 'local';   // two tabs on one computer, for testing
 // the parts of a fighter the other side needs in order to draw them
@@ -3965,7 +3998,7 @@ function linkUp(api, hosting) {
 }
 
 function startPvp(theirKind, hosting) {
-  pvp = { hosting, carves: [], pin: null, state: null, at: 0, ping: 0, mine: 0, theirs: 0, downAt: 0, pose: null, sent: 0 };
+  pvp = { hosting, carves: [], fx: [], theirThrows: new Map(), throwing: false, calling: '', pin: null, state: null, at: 0, ping: 0, mine: 0, theirs: 0, downAt: 0, pose: null, sent: 0 };
   applySettings(); pvp.pose = Object.assign({}, pose);
   setMatch(pickWho, theirKind);
   pvpSpawn();
@@ -3995,8 +4028,17 @@ function onNet(m) {
   }
   if (m.t === 'bye') return linkDown('The other player left.');
   if (!pvp) return;
+  if (m.t === 'pick') {                                       // they changed fighter
+    if (!ROSTER[m.kind]) return;
+    swapMatch(who, m.kind);
+    if (screen === 'pause') show('pause');
+    return;
+  }
   if (m.t === 'state' && m.s && typeof m.s === 'object') {
     pvp.state = m; pvp.at = performance.now();
+    if (Array.isArray(m.f)) playFx(m.f);
+    showThrows(Array.isArray(m.o) ? m.o.filter(Array.isArray) : []);     // none listed = all have landed
+    callOut(m.s);
     if (Array.isArray(m.c)) for (const c of m.c.slice(0, 60)) {
       remoteCarve = byEnemy = true;
       carve(num(c[0], -400, 400), num(c[1], -5, 300), num(c[2], -400, 400), num(c[3], 0, 30), num(c[4], -50, 60));
@@ -4033,6 +4075,71 @@ function onNet(m) {
   else if (m.t === 'pong') pvp.ping = performance.now() - m.at | 0;
 }
 
+function playFx(list) {
+  const pal = foe === who ? FROST : FIRE;
+  for (const f of list.slice(0, 100)) {
+    if (!Array.isArray(f)) continue;
+    const [kind, ...a] = f, n = i => num(a[i], -500, 500);
+    if (kind === 'u') dust(n(0), n(1), n(2), num(a[3], 0, 130) | 0, num(a[4], 0, 60));
+    else if (kind === 'e') erupt(n(0), n(1), n(2), num(a[3], 0, 20), pal);
+    else if (kind === 'c') addCrater(n(0), n(1), num(a[2], 0, 20));
+    else if (kind === 'f') flame(n(0), n(1), n(2), n(3), n(4), n(5), num(a[6], 0, 3), num(a[7], 0, 3), pal);
+    else if (kind === 'd' && Array.isArray(a[4])) debris(n(0), n(1), n(2), num(a[3], 0, 3), [0, 1, 2].map(i => num(a[4][i], 0, 2)), n(5), n(6), n(7), num(a[8], 0, 6));
+  }
+}
+
+// Cars and people I pick up or throw: their positions go across so the other side sees them coming.
+function myThrows() {
+  const out = [], r = v => Math.round(v * 10) / 10;
+  if (P.held?.o) { P.held.o.mine = true; pvp.throwing = true; }
+  if (!pvp.throwing) return out;
+  for (const [type, list] of [['car', cars], ['civ', civs]]) list.forEach((o, i) => {
+    if (!o.mine) return;
+    if (!(o.held || o.flung)) { o.mine = false; return; }
+    if (out.length < 6) out.push([type, i, r(o.x), r(o.y || 0), r(o.z), r(o.yaw), r(o.pitch || 0), r(o.roll || 0)]);
+  });
+  pvp.throwing = !!(out.length || P.held?.o);
+  return out;
+}
+function showThrows(list) {
+  const seen = new Set();
+  for (const [type, i, x, y, z, yaw, pitch, roll] of list.slice(0, 6)) {
+    const o = (type === 'car' ? cars : civs)[i | 0];
+    if (!o || o === P.held?.o) continue;
+    seen.add(o);
+    Object.assign(o, { held: true, flung: false, x: num(x, -400, 400), y: num(y, 0, 300), z: num(z, -400, 400), yaw: num(yaw, -1e4, 1e4) });
+    if (type === 'car') { o.pitch = num(pitch, -1e4, 1e4); o.roll = num(roll, -1e4, 1e4); }
+    pvp.theirThrows.set(o, type);
+  }
+  for (const [o, type] of pvp.theirThrows) {
+    if (seen.has(o)) continue;
+    pvp.theirThrows.delete(o);
+    o.held = false;
+    dust(o.x, o.y || 0, o.z, type === 'car' ? 40 : 8, type === 'car' ? 18 : 6);       // it landed
+    if (type === 'car') Object.assign(o, { wreck: 14, y: 0, pitch: 0, roll: 0 });
+    else Object.assign(o, { flung: true, lethal: false, vx: 0, vy: 0, vz: 0 });
+  }
+}
+
+// 3. call out the big moves, so there is a moment to get out of the way
+const CALLS = {
+  hero: { cross: 'CROSSFALL', meteor: 'METEOR DROP', storm: 'REAPER SPHERE', wire: 'TRIPWIRE', whirl: 'WRECKING BALL', orbit: 'ORBIT', spin: 'CYCLONE' },
+  cinder: { whirl: 'FIRE WHEEL', dash: 'EMBER DASH', leap: 'COMET CLEAVE', wave: 'CROSS FLARE', rise: 'PHOENIX RISE', rain: 'EMBER RAIN' },
+  brute: { charge: 'TITAN PUNCH', dash: 'BULL RUSH', rip: 'LANDSLIDE', slam: 'LANDSLIDE', clap: 'THUNDERCLAP', kickwind: 'TITAN KICK', quake: 'CATACLYSM', ragdoll: 'RAGDOLL' },
+  halo: { charge: 'COMET PUNCH', beam: 'SUN GAZE', dive: 'SKYFALL', gale: 'GALE', boom: 'SONIC BURST', flare: 'SOLAR FLARE' },
+};
+const ULTS = ['storm', 'rain', 'quake', 'ragdoll', 'flare'];
+function callOut(st) {
+  const names = CALLS[foe];
+  const now = st.cm && names[st.cm.name] ? st.cm.name : Object.keys(names).find(k => k !== 'dash' && k !== 'leap' && st[k]) || '';
+  if (now && now !== pvp.calling) {
+    const ult = ULTS.includes(now);
+    say((ult ? '⚠ ' : '') + ROSTER[foe].name + ': ' + names[now] + (ult ? ' ⚠' : ''), ult ? 1.8 : .9);
+    if (ult) sfx(.9, 900, .5);
+  }
+  pvp.calling = now;
+}
+
 // 30 times a second: who I am right now
 let pingAt = 0;
 function netTick() {
@@ -4043,8 +4150,13 @@ function netTick() {
   const gripping = P.held?.type === 'rival' || P.cm?.carry || P.chain?.pulling && P.chain.ent?.type === 'rival';
   const shots = waves.filter(w => w.mine).slice(0, 8).map(w => ({ p: w.p, v: w.v, yaw: w.yaw, kind: w.kind, life: w.life, age: w.age }));
   const blocks = thrown.slice(0, 4).map(t => ({ p: t.p, color: t.color, spin: t.spin }));
-  netSend({ t: 'state', s: JSON.parse(JSON.stringify(st, (k, v) => k === 'ent' || k === 'o' ? undefined : typeof v === 'number' ? Math.round(v * 100) / 100 : v)),
-    c: pvp.carves.splice(0), r: rain.filter(d => d.mine).slice(0, 30).map(d => ({ x: d.x, y: d.y, z: d.z, floor: d.floor, delay: d.delay })), w: shots, b: blocks, g: gripping ? { x: E.x, y: E.y, z: E.z, swing: E.swing || 0 } : null });
+  const msg = ({ t: 'state', s: JSON.parse(JSON.stringify(st, (k, v) => k === 'ent' || k === 'o' || v && v.nx !== undefined ? undefined : typeof v === 'number' ? Math.round(v * 100) / 100 : v)),
+    c: pvp.carves.splice(0), f: pvp.fx.splice(0), r: rain.filter(d => d.mine).slice(0, 30).map(d => ({ x: d.x, y: d.y, z: d.z, floor: d.floor, delay: d.delay })), w: shots, b: blocks, g: gripping ? { x: E.x, y: E.y, z: E.z, swing: E.swing || 0 } : null, o: myThrows() });
+  // the real connection drops messages over 16 kB and ends the match, so shed the extras first
+  for (const k of ['c', 'f', 'r', 'w', 'b', 'o']) if (!msg[k].length) delete msg[k];
+  // only a busy update can come near the 16 kB limit, so only those are measured
+  if ((msg.f?.length || 0) + (msg.c?.length || 0) > 40 && JSON.stringify(msg).length > 15000) { delete msg.f; delete msg.r; }
+  netSend(msg);
   // knockbacks I dealt this tick
   if (E.stun > 0 && !gripping) { netSend({ t: 'knock', x: E.vx, y: E.vy, z: E.vz }); E.stun = 0; E.flung = false; }
   if (performance.now() - pingAt > 1000) { pingAt = performance.now(); netSend({ t: 'ping', at: pingAt }); }
@@ -4078,7 +4190,7 @@ function drawRemote(time) {
     if (m.s.chain && !Array.isArray(m.s.chain.a)) P.chain = null;
     who = foe; pose = pvp.pose; tint = foe === mine.who; remoteDrawing = true;
     buildScene(time);
-    if (P.held && P.held.type !== 'rival') push(E.x, E.y + (foe === 'halo' ? 3.7 : 5.6), E.z, 0, 2.4, P.held.type === 'car' ? 1.2 : 1.8, 2.4, E.yaw, P.held.color || [.5, .2, .2]);
+    if (P.held?.type === 'rock') push(E.x, E.y + (foe === 'halo' ? 3.7 : 5.6), E.z, 0, 2.4, P.held.type === 'car' ? 1.2 : 1.8, 2.4, E.yaw, P.held.color || [.5, .2, .2]);
   } catch (e) { console.warn('could not draw the other player', e); }
   remoteDrawing = false;
   ({ who, pose, butt, rest, tint } = mine);
@@ -4133,17 +4245,25 @@ function helpHTML() {
 // ── screens ──
 const btn = (label, act, extra = '') => `<button class="wide ${extra}" data-act="${act}">${label}</button>`;
 function selectScreen(which) {
-  const pick = which === 'who' ? pickWho : pickFoe, r = ROSTER[pick];
+  const pick = which === 'who' ? pickWho : which === 'swap' ? swapPick : pickFoe, r = ROSTER[pick];
   const cards = Object.keys(ROSTER).map(k => `<button class="card ${k === pick ? 'sel' : ''}" data-act="card" data-id="${k}"><img alt="" src="${thumbs[k] || ''}">${ROSTER[k].name}</button>`).join('');
   const stats = ['Power', 'Speed', 'Reach', 'Toughness'].map((n, i) => `<div class="stat"><span>${n}</span>${[1, 2, 3, 4, 5].map(v => `<i class="${v <= r.stats[i] ? 'on' : ''}"></i>`).join('')}</div>`).join('');
   const moves = r.moves.map(([a, name, what]) => `<div class="mv"><b>${bound(a)}</b><div>${name}<small>${what}</small></div></div>`).join('');
-  return `<div class="pane left"><h2>${which === 'who' ? 'CHOOSE YOUR FIGHTER' : 'CHOOSE YOUR RIVAL'}</h2>
-    <p class="sub">${which === 'who' ? 'Step 1 of 2' : 'Step 2 of 2 · you are ' + ROSTER[pickWho].name + (pick === pickWho ? ' · mirror match' : '')}</p>
-    <div class="grid">${cards}</div>${btn(which === 'who' ? (online ? 'Go online ▸' : 'Confirm fighter ▸') : 'Start match ▸', which === 'who' ? 'toFoe' : 'start', 'go')}${btn('◂ Back', 'back')}</div>
+  return `<div class="pane left"><h2>${which === 'foe' ? 'CHOOSE YOUR RIVAL' : 'CHOOSE YOUR FIGHTER'}</h2>
+    <p class="sub">${which === 'swap' ? 'The round restarts for both of you. The score stays.' : which === 'who' ? 'Step 1 of 2' : 'Step 2 of 2 · you are ' + ROSTER[pickWho].name + (pick === pickWho ? ' · mirror match' : '')}</p>
+    <div class="grid">${cards}</div>${which === 'swap' ? btn('Switch fighter ▸', 'doSwap', 'go') : btn(which === 'who' ? (online ? 'Go online ▸' : 'Confirm fighter ▸') : 'Start match ▸', which === 'who' ? 'toFoe' : 'start', 'go')}${btn('◂ Back', 'back')}</div>
     <div class="pane right"><h2>${r.name}</h2><p class="sub">${r.role}</p><p>${r.desc}</p>${stats}<h2 style="margin-top:16px">MOVES</h2>${moves}</div>`;
 }
-let online = false;
+let online = false, swapPick = 'hero';
+// online: someone changed fighter, so both sides rebuild the city and start the round again
+function swapMatch(mine, theirs) {
+  setMatch(mine, theirs);
+  pvp.pose = Object.assign({}, pose); pvp.state = pvp.pin = null; pvp.carves.length = 0; pvp.fx.length = 0; pvp.theirThrows.clear();
+  pvpSpawn();
+  say(ROSTER[who].name + '  vs  ' + ROSTER[foe].name + '  (online)', 2.4);
+}
 const SCREENS = {
+  swap: () => selectScreen('swap'),
   mp: () => `<div class="pane center"><h2>PLAY ONLINE</h2><p class="sub">You are ${ROSTER[pickWho].name}. One of you hosts, the other types the code.</p>
     ${btn('Host a game', 'host', 'go')}
     <div class="row"><input id="code" maxlength="8" placeholder="ROOM CODE" value="${joinCode}" autocomplete="off" style="font:inherit;text-transform:uppercase;letter-spacing:3px;padding:9px;border-radius:8px;border:1px solid #6fb7ff44;background:#16213a;color:#fff"><button data-act="join">Join</button></div>
@@ -4159,8 +4279,8 @@ const SCREENS = {
   who: () => selectScreen('who'),
   foe: () => selectScreen('foe'),
   pause: () => pvp ? `<div class="pane center"><h2>ONLINE MATCH</h2><p class="sub">${ROSTER[who].name} vs ${ROSTER[foe].name} · ${pvp.mine} - ${pvp.theirs} · ping ${pvp.ping} ms · the match keeps running</p>
-    ${btn('Back to the fight', 'resume', 'go')}${btn('Options', 'options')}${btn('Leave match', 'main')}</div>` : `<div class="pane center"><h2>PAUSED</h2><p class="sub">${ROSTER[who].name} vs ${foeName()}${notice ? ' · ' + notice : ''}</p>
-    ${btn('Resume', 'resume', 'go')}${btn('Save game', 'save')}${btn('Rematch (rival returns in front of you)', 'rematch')}${btn('Rebuild city', 'rebuild')}${btn('Options', 'options')}${btn('Main menu', 'main')}</div>`,
+    ${btn('Back to the fight', 'resume', 'go')}${btn('Change fighter', 'swap')}${btn('Options', 'options')}${btn('Leave match', 'main')}</div>` : `<div class="pane center"><h2>PAUSED</h2><p class="sub">${ROSTER[who].name} vs ${foeName()}${notice ? ' · ' + notice : ''}</p>
+    ${btn('Resume', 'resume', 'go')}${btn('Change fighter / rival', 'change')}${btn('Save game', 'save')}${btn('Rematch (rival returns in front of you)', 'rematch')}${btn('Rebuild city', 'rebuild')}${btn('Options', 'options')}${btn('Main menu', 'main')}</div>`,
   options() {
     const row = (label, ctl) => `<div class="row"><span>${label}</span>${ctl}</div>`;
     const tog = (key, label) => row(label, `<button data-act="toggle" data-id="${key}">${settings[key] ? 'On' : 'Off'}</button>`);
@@ -4257,7 +4377,14 @@ const ACT = {
   multi() { online = true; netStatus = ''; show('who'); },
   host() { openRoom(true); },
   join() { joinCode = $('code').value; openRoom(false, joinCode); },
-  card(id) { if (screen === 'who') pickWho = id; else pickFoe = id; show(screen); },
+  card(id) { if (screen === 'who') pickWho = id; else if (screen === 'swap') swapPick = id; else pickFoe = id; show(screen); },
+  change() { online = false; pickWho = who; pickFoe = foe; show('who'); },
+  swap() { swapPick = who; show('swap'); },
+  doSwap() {
+    if (!pvp) return show('main');
+    if (swapPick !== who) { pickWho = swapPick; netSend({ t: 'pick', kind: swapPick }); swapMatch(swapPick, foe); }
+    resume();
+  },
   toFoe() { if (online) return show('mp'); if (pickFoe === pickWho) pickFoe = Object.keys(ROSTER).find(k => k !== pickWho); show('foe'); },
   start() { startMatch(pickWho, pickFoe); },
   load() { if (loadGame()) resume(); else { notice = 'That save could not be read.'; show('main'); } },
@@ -4270,6 +4397,7 @@ const ACT = {
     else if (screen === 'options') show(optionsFrom);
     else if (screen === 'foe') show('who');
     else if (screen === 'mp') { netClose(); show('who'); }
+    else if (screen === 'swap' || screen === 'who' && mode === 'pause') show('pause');
     else show('main');
   },
   resume, main: toMain,
