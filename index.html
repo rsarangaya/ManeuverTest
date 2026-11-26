@@ -1439,11 +1439,12 @@ function bounce(p) {                                         // anyone can use a
 function whiteout(t) { P.blindT = t; say('BLINDED', .9); }
 
 // how high each fighter carries their head
-const HEAD = { hero: 1.95, cinder: 2.8, brute: 3.5, halo: 2.4, slash: 2.2, shoot: 2.18 };
+const HEAD = { hero: 1.95, cinder: 2.8, brute: 2.9, halo: 1.85, slash: 2.2, shoot: 2.18 };
 // does the line of this round pass through the rival's head?
 function headshot(w, dir) {
   if (w.kind !== 'shot' && w.kind !== 'ric') return false;
-  const h = [E.x - w.p[0], E.y + HEAD[foe] - w.p[1], E.z - w.p[2]], t = dot(h, dir);
+  const ahead = foe === 'brute' ? 1.5 : 0;                // on all fours, it sticks out in front
+  const h = [E.x + Math.sin(E.yaw) * ahead - w.p[0], E.y + HEAD[foe] - w.p[1], E.z + Math.cos(E.yaw) * ahead - w.p[2]], t = dot(h, dir);
   return t > -1 && t < 4 && Math.hypot(h[0] - dir[0] * t, h[1] - dir[1] * t, h[2] - dir[2] * t) < .25 + .18 * ROSTER[foe].size;
 }
 
@@ -1858,7 +1859,7 @@ function bruteActions(look) {
     P.atkBuf = 0; P.swings = P.swings === 1 ? 0 : 1;          // right, left, right, left
     startCm('combo', { n: P.swings, aim: aimYaw(11) }); style('slash', 5); sfx(.4, 900, .1);
   }
-  if (P.hold > .22 && !P.crossUsed && (!m || m.name === 'combo')) { P.crossUsed = true; startCm('charge', { power: 0 }); say('TITAN PUNCH', .8); }
+  if (P.hold > .22 && !P.crossUsed && (!m || m.name === 'combo')) { P.crossUsed = true; startCm('charge', { power: 0 }); say('TAIL WHACK', .8); }
   if (pressed.has('mouse2') && free && P.rushCd > 0) say('RUSH READY IN ' + Math.ceil(P.rushCd) + 's', .7);
   if (pressed.has('mouse2') && free && P.dashes > 0 && P.rushCd <= 0) { P.dashes--; P.rushCd = RUSH_COOLDOWN; const y = P.grounded ? 0 : Math.min(0, look[1]), h = Math.sqrt(1 - y * y); startCm('dash', { d: [Math.sin(cam.yaw) * h, y, Math.cos(cam.yaw) * h] }); style('dash', 8); sfx(.7, 600, .4); }
   if (pressed.has('KeyE') && P.dashes > 0 && !P.dash) {
@@ -1913,13 +1914,19 @@ function bruteMove(dt) {
     if (!m.done) {
       m.done = true;
       const p = m.power;
-      for (let d = 4; d <= 6 + p * 12; d += 4) front(d, 2.3, 4.5 + p * 2.5, 40);
-      if (facingEnemy() && bite(9 + p * 8, 40 + p * 60) && !E.dead) { E.vx = Math.sin(P.yaw) * 60; E.vz = Math.cos(P.yaw) * 60; E.vy = 20; E.stun = .7; }
-      dust(P.x + Math.sin(P.yaw) * 6, P.y, P.z + Math.cos(P.yaw) * 6, 40, 24); jolt(1.3, .12); style('crossfall', 14);
+      for (let i = 0; i < 8; i++) {                          // everything the tail passes through
+        const q = i / 8 * 6.283;
+        smash(P.x + Math.sin(q) * (5 + p * 4), P.y + 2, P.z + Math.cos(q) * (5 + p * 4), 3 + p * 2, 40);
+      }
+      if (bite(9 + p * 7, 40 + p * 60) && !E.dead) {         // knocked away from him
+        const dx = E.x - P.x, dz = E.z - P.z, d = Math.hypot(dx, dz) || 1;
+        E.vx = dx / d * 60; E.vz = dz / d * 60; E.vy = 20; E.stun = .7;
+      }
+      dust(P.x, P.y, P.z, 50, 30); jolt(1.3, .12); style('crossfall', 14);
     }
     P.vy = Math.max(P.vy - 38 * dt, -75);
-    P.vx = Math.sin(P.yaw) * 20 * (1 - m.t / .25); P.vz = Math.cos(P.yaw) * 20 * (1 - m.t / .25);
-    if (m.t > .25) done();
+    P.vx *= 1 - 8 * dt; P.vz *= 1 - 8 * dt;
+    if (m.t > .36) done();
     return true;
   }
   if (m.name === 'dash') {
@@ -2076,7 +2083,7 @@ function drawSunPillar(x, top, low, z, time) {
     push(x + Math.sin(a) * r, .5, z + Math.cos(a) * r, 3, r * .13, 1, 1, a, i % 2 ? SUN : [1, 1, .85]);
   }
 }
-const SUN = [1, .8, .22], IVORY = [.9, .88, .8], TEAL = [.05, .38, .42], GILT = [.93, .68, .16], SLATE = [.12, .15, .2], TAN = [.72, .52, .38], INK = [.08, .07, .1];
+const SUN = [1, .8, .22], IVORY = [.9, .88, .8], GILT = [.93, .68, .16], SLATE = [.12, .15, .2], CELL = [.05, .12, .36];
 function haloActions(look) {
   const m = P.cm, free = !m && P.cool <= 0;
   if (P.cool <= 0 && !m) P.cooled = true;
@@ -2265,81 +2272,98 @@ function haloMove(dt) {
   return P.flying;
 }
 
-// ═════ his look: ivory and teal, gold ring of light at his back ═════
+// LIGHTBOI is a drone: a floating core with one great lens, solar wings, a spinning ring and two hands that fly on their own
 function drawHalo(v, time) {
   const S = 1.2, m = v.move, on = v.state === 'wind' || v.state === 'act', act = v.state === 'act', t = v.t || 0;
   const hs = Math.hypot(v.vx || 0, v.vz || 0), vy = v.vy || 0, air = v.flying || !v.grounded;
-  const speed = Math.hypot(hs, vy), w = Math.sin(v.phase || 0), bob = air ? Math.sin(time * 2.6) * .05 : 0;
-  // arm = [swing (negative is forward), sweep, elbow bend]
-  let aL = [.12, -.22, -.35], aR = [.12, .22, -.35], lean = .05, lL = 0, lR = 0, kL = .1, kR = .1, twist = 0;
-  if (air && speed < 14) { lL = -.12; lR = -.55; kL = .15; kR = 1.15; aL = [.15, -.45, -.4]; aR = [.15, .45, -.4]; }
-  else if (air) {                                              // body follows the line of flight
-    const fast = clamp((speed - 14) / 30, 0, 1);
-    lean = clamp(Math.atan2(hs, vy), 0, 2.7) * clamp(speed / 30, 0, 1);
-    aR = [-2.9 * fast, .12, -.1]; aL = [-2.9 * fast * .15 + .35, -.3, -.2]; lL = .08; lR = .18; kL = .1; kR = .3;
-  } else if (hs > 1) { const k = clamp(hs / 14, 0, 1); lL = w * k; lR = -w * k; kL = .15 + Math.max(0, -Math.cos(v.phase)) * 1.3 * k; kR = .15 + Math.max(0, Math.cos(v.phase)) * 1.3 * k; aL = [-w * .8, -.15, -.9]; aR = [w * .8, .15, -.9]; lean = k * .3; }
+  const speed = Math.hypot(hs, vy), bob = Math.sin(time * 2.6) * (air ? .08 : .05), rush = clamp(speed / 30, 0, 1);
+  // hand = [swing (negative is forward), sweep, elbow bend], as if it still had an arm
+  let aL = [.12, -.42, -.5], aR = [.12, .42, -.5], lean = air ? clamp(Math.atan2(hs, vy), 0, 1.5) * rush : clamp(hs / 14, 0, 1) * .25, twist = 0;
   if (on && m === 'combo') {
     const n = v.n ?? ((t / .25 | 0) % 2), k = clamp(act ? (v.n === undefined ? t % .25 : t) / .08 : 0, 0, 1);
     const punch = side => [.5 - 2.05 * k, side * (.4 - .5 * k), -2.1 + 2.1 * k], guard = side => [-.8, side * .35, -1.9];
     if (n === 0) { aR = punch(1); aL = guard(-1); twist = .7 - 1.5 * k; } else { aL = punch(-1); aR = guard(1); twist = -.7 + 1.5 * k; }
   }
   if (m === 'charge' || v.state === 'wind' && (m === 'dash' || m === 'wave' || m === 'clap')) { aR = [.9, .5, -1.7]; aL = [-1.3, -.3, -.5]; twist = .75; }
-  if (on && (m === 'punch' || m === 'dash' && act)) { aR = [-3.0, .05, 0]; aL = [.7, -.35, -.5]; lean = Math.max(lean, 1.35); lL = .1; lR = .2; }
-  if (m === 'beam' || on && m === 'wave' && act) { aR = [.35, .6, -.7]; aL = [.35, -.6, -.7]; lean = .18; }
-  if (on && (m === 'dive' || m === 'leap')) { aR = [-3.0, .08, 0]; aL = [-3.0, -.08, 0]; lean = v.hits ? .8 : 2.35; lL = .1; lR = .2; }
+  if (on && (m === 'punch' || m === 'dash' && act)) { aR = [-3.0, .05, 0]; aL = [.7, -.35, -.5]; lean = Math.max(lean, 1.2); }
+  if (m === 'beam' || on && m === 'wave' && act) { aR = [.35, .8, -.7]; aL = [.35, -.8, -.7]; lean = .12; }
+  if (on && (m === 'dive' || m === 'leap')) { aR = [-3.0, .08, 0]; aL = [-3.0, -.08, 0]; lean = v.hits ? .8 : 2.1; }
   if (on && m === 'gale') { aR = [-.4, .9, -.4]; aL = [-.4, -.9, -.4]; lean = act ? .45 : -.3; }
-  if (on && (m === 'boom' || m === 'flare' || m === 'sphere')) { aR = [-1.55, 1.5, -.1]; aL = [-1.55, -1.5, -.1]; lean = -.25; lL = -.2; lR = -.45; kR = .9; }
+  const burst = on && (m === 'boom' || m === 'flare' || m === 'sphere');
+  if (burst) { aR = [-1.55, 1.5, -.1]; aL = [-1.55, -1.5, -.1]; lean = -.25; }
   if (m === 'throw') { const k = clamp(t / .18, 0, 1); aR = aL = [-3.2 + 2.2 * k, 0, -.2]; lean += .5 * k; }
   if (v.carry) { aR = [-3.05, -.1, -.2]; aL = [-3.05, .1, -.2]; lean = Math.min(lean, .35); }
-  if (v.state === 'rest') { lean = .25; aL = [-.2, -.35, -.5]; aR = [-.2, .35, -.5]; }
+  if (v.state === 'rest') { lean = .25; aL = [-.2, -.55, -.5]; aR = [-.2, .55, -.5]; }
 
   const cy = Math.cos(v.yaw), sy = Math.sin(v.yaw), cl = Math.cos(lean), sl = Math.sin(lean), flash = v.hurtT > 0;
-  let tw = 0;
+  let tw = twist;
   const world = (x, y, z) => {
     const x1 = x * Math.cos(tw) + z * Math.sin(tw), z1 = z * Math.cos(tw) - x * Math.sin(tw);
-    const yy = y - 1, y2 = yy * cl - z1 * sl + 1, z2 = yy * sl + z1 * cl;
+    const yy = y - 1.4, y2 = yy * cl - z1 * sl + 1.4, z2 = yy * sl + z1 * cl;
     return [v.x + (x1 * cy + z2 * sy) * S, v.y + (y2 + bob) * S, v.z + (z2 * cy - x1 * sy) * S];
   };
   const box = (x, y, z, bw, bh, bd, col, mat = 0, pitch = 0, turn = 0) => { const p = world(x, y, z); push(p[0], p[1], p[2], flash ? 3 : mat, bw * S, bh * S, bd * S, v.yaw + tw + turn, flash ? [1, .9, .75] : col, pitch + lean); };
-  for (const [side, a, k] of [[-1, lL, kL], [1, lR, kR]]) {
-    const ky = 1 - Math.cos(a) * .5, kz = -Math.sin(a) * .5, fy = ky - Math.cos(a + k) * .48, fz = kz - Math.sin(a + k) * .48;
-    box(side * .16, (1 + ky) / 2, kz / 2, .24, .52, .26, TEAL, 0, a);
-    box(side * .16, (ky + fy) / 2, (kz + fz) / 2, .21, .5, .23, IVORY, 0, a + k);
-    box(side * .16, fy + .1, fz + .04, .24, .2, .3, GILT, 0, a + k);
+  const glow = m === 'beam' || m === 'wave' && on || burst, pulse = 1 + Math.sin(time * 6) * .08;
+
+  // the core: an armoured shell round a dark frame
+  box(0, 1.5, 0, .66, .56, .62, SLATE);
+  box(0, 1.84, -.02, .6, .16, .56, IVORY); box(0, 1.96, -.04, .36, .1, .36, IVORY);
+  box(0, 1.17, -.02, .52, .14, .48, IVORY); box(0, 1.05, -.04, .28, .12, .28, STEEL);
+  for (const side of [-1, 1]) {
+    box(side * .39, 1.52, -.02, .16, .46, .46, IVORY);
+    box(side * .48, 1.52, -.02, .06, .24, .24, GILT);
+    box(side * .27, 1.72, .27, .2, .1, .12, IVORY, 0, .35, side * .25);     // brow plates over the lens
   }
-  box(0, 1.03, 0, .5, .12, .31, GILT);
-  box(0, 1.18, 0, .44, .24, .27, TEAL);
-  tw = twist;
-  box(0, 1.5, 0, .72, .44, .38, IVORY);
-  box(-.17, 1.54, .2, .3, .28, .05, IVORY); box(.17, 1.54, .2, .3, .28, .05, IVORY);
-  box(0, 1.52, .23, .13, .13, .04, SUN, 3);
-  box(0, 1.34, .2, .09, .26, .04, TEAL);
-  box(0, 1.74, 0, .5, .1, .34, GILT);
-  box(0, 1.99, 0, .31, .35, .31, TAN);
-  box(0, 2.19, -.02, .35, .12, .36, INK); box(0, 2.04, -.17, .34, .3, .07, INK); box(.06, 2.2, .15, .2, .09, .09, INK);
-  const glow = m === 'beam' || m === 'wave' && on;
-  box(-.08, 2.01, .165, .09, .04, .02, SUN, 3); box(.08, 2.01, .165, .09, .04, .02, SUN, 3);
-  if (glow) box(0, 2.01, .19, .3, .07, .03, [1, .95, .7], 3);
-  for (const side of [-1, 1]) {                                // split mantle
-    const trail = clamp(speed / 30, 0, 1) * 1.1 + .15 + Math.sin(time * 9 + side) * .1;
-    const my = 1.68 - Math.cos(trail) * .5, mz = -.22 - Math.sin(trail) * .5;
-    box(side * .2, (1.68 + my) / 2, (-.22 + mz) / 2, .2, .56, .035, TEAL, 0, trail);
-    box(side * .23, my - Math.cos(trail + .25) * .22, mz - Math.sin(trail + .25) * .22, .16, .44, .03, TEAL, 0, trail + .25);
+  box(0, 1.93, .12, .1, .05, .5, GILT);
+  // the lens
+  box(0, 1.5, .33, .44, .44, .08, STEEL); box(0, 1.5, .37, .34, .34, .06, SLATE);
+  const eye = (glow ? .3 : .21) * pulse;
+  box(0, 1.5, .41, eye, eye, .05, SUN, 3); box(0, 1.5, .44, eye * .45, eye * .45, .04, [1, 1, .9], 3);
+  for (const side of [-1, 1]) box(side * .25, 1.28, .31, .07, .05, .04, SUN, 3);
+  // antennae
+  for (const [x, tall] of [[-.18, .42], [.12, .26]]) {
+    box(x, 1.98 + tall / 2, -.18, .035, tall, .035, STEEL, 0, -.25);
+    box(x, 2 + tall, -.18 - tall * .13, .08, .08, .08, SUN, 3);
   }
-  for (let i = 0; i < 18; i++) {                               // the ring
-    const a = i / 18 * 6.283 + time * .8;
-    box(Math.cos(a) * .52, 1.66 + Math.sin(a) * .52, -.36, .09, .09, .04, i % 3 ? GILT : SUN, 3);
+  // solar wings: two panels a side, swept back at speed and spread wide to burst
+  const back = burst ? -.15 : .25 + rush * .75 + Math.sin(time * 3) * .04;
+  for (const side of [-1, 1]) for (const [high, droop, long] of [[1.82, .2, .82], [1.3, -.22, .62]]) {
+    const reach = d => [side * (.46 + Math.cos(back) * d), high + droop * d, -.28 - Math.sin(back) * d];
+    const [bx, by, bz] = reach(.22);
+    box(bx, by, bz, .32, .07, .07, STEEL, 0, 0, side * back);
+    for (let i = 0; i < 3; i++) {
+      const [px, py, pz] = reach(.42 + i * long / 3);
+      box(px, py, pz, long / 3 - .03, .36 - i * .05, .045, CELL, 0, 0, side * back);
+      box(px, py + .19 - i * .025, pz, long / 3, .035, .06, GILT, 0, 0, side * back);
+    }
+    const [tx, ty, tz] = reach(.34 + long);
+    box(tx, ty, tz, .07, .12, .08, SUN, 3, 0, side * back);
   }
+  // the ring of light turning behind it
+  for (let i = 0; i < 20; i++) {
+    const r = burst ? 1.05 : .68, q = i / 20 * 6.283 + time * (glow ? 4 : 1.2);
+    box(Math.cos(q) * r, 1.52 + Math.sin(q) * r, -.46, .1, .1, .05, i % 4 ? GILT : SUN, 3);
+  }
+  // thrusters underneath
+  for (const side of [-1, 1]) {
+    box(side * .27, 1.02, -.14, .18, .2, .18, SLATE); box(side * .27, .91, -.14, .22, .05, .22, GILT);
+    const jet = (.18 + rush * .55 + (air ? .12 : 0)) * (.85 + Math.random() * .3);
+    box(side * .27, .88 - jet / 2, -.14, .12, jet, .12, SUN, 3); box(side * .27, .88 - jet * .8, -.14, .06, jet * .7, .06, [1, 1, .9], 3);
+  }
+  // hands, each held to the core by a thread of light
+  tw = twist * 1.3;
   for (const [side, [a, sweep, bend]] of [[-1, aL], [1, aR]]) {
-    const sx = side * .47, cs = Math.cos(sweep), sn = Math.sin(sweep);
-    const put = (y, z, bw, bh, bd, col, mat, pitch) => box(sx + z * sn, y, z * cs, bw, bh, bd, col, mat, pitch, sweep);
-    const top = 1.66, ey = top - Math.cos(a) * .42, ez = -Math.sin(a) * .42, f = a + bend, hy = ey - Math.cos(f) * .42, hz = ez - Math.sin(f) * .42;
-    box(sx, top + .02, 0, .27, .22, .3, GILT);
-    put((top + ey) / 2, ez / 2, .2, .44, .21, IVORY, 0, a);
-    put((ey + hy) / 2, (ez + hz) / 2, .18, .42, .19, TEAL, 0, f);
-    put(hy, hz, .19, .18, .2, GILT, 0, f);
+    const sx = side * .66, cs = Math.cos(sweep), sn = Math.sin(sweep), top = 1.62, f = a + bend;
+    const ey = top - Math.cos(a) * .44, ez = -Math.sin(a) * .44, hy = ey - Math.cos(f) * .46, hz = ez - Math.sin(f) * .46;
+    const put = (x, y, z, bw, bh, bd, col, mat = 0) => box(sx + x * cs + z * sn, y, z * cs - x * sn, bw, bh, bd, col, mat, f, sweep);
+    for (let i = 1; i < 4; i++) { const k = i / 4; box(side * .5 * (1 - k) + (sx + hz * sn) * k, 1.52 * (1 - k) + hy * k, hz * cs * k, .05, .05, .05, SUN, 3); }
+    put(0, hy, hz, .27, .27, .27, IVORY);
+    put(side * .15, hy, hz, .06, .18, .18, GILT);
+    const dy = -Math.cos(f) * .2, dz = -Math.sin(f) * .2;               // claws point the way the arm would
+    for (const x of [-.09, .09]) put(x, hy + dy, hz + dz, .07, .2, .09, STEEL);
+    put(0, hy + dy * .75, hz + dz * .75, .08, .08, .08, SUN, 3);
   }
-  if (v.enraged) for (let i = 0; i < 7; i++) { const a = time * 4 + i * .9; push(v.x + Math.sin(a) * 1.5, v.y + .6 + (time * 2 + i * .55) % 2.6, v.z + Math.cos(a) * 1.5, 3, .12, .12, .12, a, SUN, a); }
+  if (v.enraged) for (let i = 0; i < 7; i++) { const q = time * 4 + i * .9; push(v.x + Math.sin(q) * 1.7, v.y + .6 + (time * 2 + i * .55) % 2.6, v.z + Math.cos(q) * 1.7, 3, .12, .12, .12, q, SUN, q); }
 }
 
 const HALO_VIEW = { combo: 'combo', charge: 'charge', punch: 'punch', beam: 'beam', dive: 'dive', gale: 'gale', boom: 'boom', flare: 'flare', throw: 'throw' };
@@ -2742,16 +2766,16 @@ const ROSTER = {
     moves: [['mouse0', 'Twin Fangs', 'Three-cut combo'], ['mouse0', 'Fire Wheel (hold)', 'Spinning blades; you can still move'], ['mouse2', 'Ember Dash', 'Cut straight through anything'],
       ['KeyF', 'Comet Cleave', 'Leap and crash down on your aim'], ['KeyG', 'Cross Flare', 'A burning X that slices buildings'], ['KeyT', 'Phoenix Rise', 'Uppercut that launches'],
       ['KeyZ', 'Flicker', 'Blink a short way where you aim'], ['KeyQ', 'Ember Rain', 'Ultimate: blades fall from the sky']] },
-  brute: { name: 'TANKBOI', role: 'Colossal brawler', stats: [3, 1, 2, 5], speed: .8, jump: 1, dashes: 1, ultRate: .8, armor: .62, power: 1.55, hp: 1500, netHp: 1120, size: 1.9, deal: .82, cool: .6, camH: 4.8, camD: 11, tempo: .75,
-    desc: 'A mountain of muscle in iron gauntlets. Slower than the rest and a far bigger target, but soaks up more punishment than anyone and resists being knocked around. Outlasts rather than out-damages.',
-    moves: [['mouse0', 'Hammer Fists', 'Very fast alternating left and right'], ['mouse0', 'Titan Punch (hold)', 'Charge, release; longer hits harder'], ['mouse2', 'Bull Rush / Stampede (hold)', 'Barely hurts, but leaves them stunned. Hold to carry them a short way. Cannot climb. 7 s cooldown with cooldowns on'],
+  brute: { name: 'TANKBOI', role: 'Colossal beast', stats: [3, 1, 2, 5], speed: .8, jump: 1, dashes: 1, ultRate: .8, armor: .62, power: 1.55, hp: 1500, netHp: 1120, size: 1.9, deal: .82, cool: .6, camH: 4.8, camD: 11, tempo: .75,
+    desc: 'A hulking beast on all fours, with iron gauntlets and an armoured tail. Slower than the rest and a far bigger target, but soaks up more punishment than anyone and resists being knocked around. Outlasts rather than out-damages.',
+    moves: [['mouse0', 'Hammer Fists', 'Very fast alternating left and right'], ['mouse0', 'Tail Whack (hold)', 'Charge, release: a full turn that catches anyone around him; longer hits harder'], ['mouse2', 'Bull Rush / Stampede (hold)', 'Barely hurts, but leaves them stunned. Hold to carry them a short way. Cannot climb. 7 s cooldown with cooldowns on'],
       ['Space', 'Titan Leap (hold)', 'Tap to hop; charge and release to soar. The landing cracks the ground'],
       ['KeyF', 'Landslide', 'Rip up the street and send a rolling wall of rubble'], ['KeyG', 'Grab / Throw', 'Seize the rival, a car, a bystander or rubble; press again or attack to throw'], ['KeyT', 'Thunderclap', 'A ranged shockwave that grows as it flies'],
       ['KeyZ', 'Titan Kick (hold)', 'Charge and release: a front kick that launches'],
-      ['KeyX', 'Brace (hold)', 'Blocks most damage from the front while you creep. Let go right after a hit to counter punch'],
+      ['KeyX', 'Brace (hold)', 'Blocks most damage from the front while you creep. Let go right after a hit to counter with the tail'],
       ['KeyQ', 'Cataclysm / Ragdoll', 'Ultimate. While holding the rival: swing and slam them again and again']] },
-  halo: { name: 'LIGHTBOI', role: 'Sun-charged skyfarer', stats: [3, 5, 4, 2], speed: 1.15, jump: 1, armor: 1.05, power: 1.55, hp: 1050, netHp: 1300, size: .9, deal: 1.15, cool: .3, camH: 3.1, camD: 7.5, tempo: 1.1,
-    desc: 'Drinks sunlight and shrugs off gravity, but flight and the stare spend it; stand still on something to refill. Fights from any height, burns lines through towers with a stare, and can carry almost anything into the sky before letting go.',
+  halo: { name: 'LIGHTBOI', role: 'Sun-powered combat drone', stats: [3, 5, 4, 2], speed: 1.15, jump: 1, armor: 1.05, power: 1.55, hp: 1050, netHp: 1300, size: .9, deal: 1.15, cool: .3, camH: 3.1, camD: 7.5, tempo: 1.1,
+    desc: 'A flying machine that drinks sunlight and shrugs off gravity, but flight and the stare spend it; stand still on something to refill. Fights from any height, burns lines through towers with a stare, and can carry almost anything into the sky before letting go.',
     moves: [['Space', 'Flight', 'Take off; in the air you fly where you look. Jump rises, crouch descends'], ['ShiftLeft', 'Boost', 'Hold while flying to tear through buildings'],
       ['mouse0', 'Solar Strikes', 'Alternating punches'], ['mouse0', 'Comet Punch (hold)', 'Charge, release and fly through them'], ['mouse2', 'Sun Gaze (hold)', 'Twin beams that cut what you look at'],
       ['KeyF', 'Skyfall', 'Dive onto your aim'], ['KeyG', 'Grab / Throw', 'Carry the rival, a car, a bystander or rubble'], ['KeyT', 'Gale', 'A blast of wind that scatters everything ahead'],
@@ -3710,15 +3734,15 @@ function drawHeroAs(v, time) {
   pose = mine; butt = myButt; rest = myRest;
 }
 
-// TANKBOI: small head, enormous shoulders and fists
+// TANKBOI: a hulking beast on all fours with enormous forelimbs and an armoured tail
 const HIDE = [.6,.25,.17], HIDE2 = [.5,.2,.14], CANVAS = [.17,.18,.16], GAUNT = [.27,.28,.32], RIVET = [.65,.66,.7], AMBER = [1,.68,.12], MANE = [.9,.87,.78];
 function drawBrute(v, time) {
   const hs = Math.hypot(v.vx || 0, v.vz || 0), run = clamp(hs / 14, 0, 1), m = v.move, st = v.state, t = v.t || 0, S = 1.5;
   const on = st === 'wind' || st === 'act', act = st === 'act', k = clamp(t / .2, 0, 1), breathe = Math.sin(time * 2.4) * .025;
   const w = Math.sin(v.phase || 0);
   // arm = [swing (negative is forward), sweep, elbow bend]
-  let aL = [.05 + w * run * .9, -.18, -.45], aR = [.05 - w * run * .9, .18, -.45];
-  let lean = .22 + run * .3, crouch = .08 - breathe, twist = 0, lL = v.grounded ? w * run : -.9, lR = v.grounded ? -w * run : .3;
+  let aL = [.02 + w * run * .75, -.12, -.12], aR = [.02 - w * run * .75, .12, -.12];     // front legs, knuckles down
+  let lean = 0, crouch = .08 - breathe, twist = 0, lL = v.grounded ? -w * run * .8 : -.9, lR = v.grounded ? w * run * .8 : .3;
   let kneeL, kneeR;
   if (on && m === 'combo') {                                  // one fist drives out while the other guards
     const n = v.n ?? ((t / .25 | 0) % 2), s2 = clamp(act ? (v.n === undefined ? t % .25 : t) / .08 : 0, 0, 1);
@@ -3753,57 +3777,107 @@ function drawBrute(v, time) {
   if (m === 'brace') { aR = [-1.35, -.5, -1.9]; aL = [-1.35, .5, -1.9]; lean = .35; crouch = .3; twist = 0; }
   if (st === 'rest') { lean = .5; crouch = .2; aL = [-.3, -.4, -.3]; aR = [-.3, .4, -.3]; }
 
-  const cy = Math.cos(v.yaw), sy = Math.sin(v.yaw), cl = Math.cos(lean), sl = Math.sin(lean), flash = v.hurtT > 0;
-  let tw = 0;
+  // how far the front end is reared up off the ground, in radians
+  let rear = 0;
+  const up = m === 'ragdoll' || v.carry || m === 'throw' || m === 'wave' && act || on && (m === 'leap' || m === 'slam') && !v.hits;
+  if (up) rear = .85;
+  else if (on && m === 'quake') rear = .75 * (1 - (t % .42) / .42);
+  else if (m === 'kickwind' || m === 'kick') rear = .6;
+  else if (m === 'rip' && t > .18) rear = .6 * clamp((t - .18) / .1, 0, 1);
+  else if (m === 'clap' || m === 'brace') rear = .45;
+  else if (m === 'fly') rear = .3;
+  else if (on && (m === 'dash' || m === 'combo')) rear = m === 'combo' ? .28 : -.08;
+  if (m === 'charge') { crouch = .3; twist = .5; aL = [-.3, -.35, -.4]; aR = [-.3, .35, -.4]; }
+  // Tail Whack: a full turn with the tail flung out straight
+  const whack = on && m === 'punch', spin = whack ? 6.283 * (1 - (1 - clamp(t / .3, 0, 1)) ** 2) : 0;
+  if (whack) { crouch = .25; rear = 0; twist = 0; aL = [-.2, -.5, -.3]; aR = [-.2, .5, -.3]; }
+  const face = v.yaw + spin + (m === 'charge' ? -.9 * clamp(t / .5, 0, 1) : 0);
+
+  const cy = Math.cos(face), sy = Math.sin(face), flash = v.hurtT > 0;
+  let tw = 0, front = 0;                                     // front: whether a part tips up with the forequarters
   const world = (x, y, z) => {
     const x1 = x * Math.cos(tw) + z * Math.sin(tw), z1 = z * Math.cos(tw) - x * Math.sin(tw);
-    const yy = y - 1, y2 = yy * cl - z1 * sl + 1, z2 = yy * sl + z1 * cl;
+    const tip = -rear * front - lean * .25, ct = Math.cos(tip), st_ = Math.sin(tip), yy = y - 1.15, zz = z1 + .7;
+    const y2 = yy * ct - zz * st_ + 1.15, z2 = yy * st_ + zz * ct - .7;
     return [v.x + (x1 * cy + z2 * sy) * S, v.y + y2 * S, v.z + (z2 * cy - x1 * sy) * S];
   };
-  const box = (x, y, z, bw, bh, bd, col, mat = 0, pitch = 0, turn = 0) => { const p = world(x, y, z); push(p[0], p[1], p[2], flash ? 3 : mat, bw * S, bh * S, bd * S, v.yaw + tw + turn, flash ? [1, .85, .7] : col, pitch + lean); };
-  const c = crouch, health = v.plates ?? (v.max ? v.hp / v.max : 1);
+  const box = (x, y, z, bw, bh, bd, col, mat = 0, pitch = 0, turn = 0) => { const p = world(x, y, z); push(p[0], p[1], p[2], flash ? 3 : mat, bw * S, bh * S, bd * S, face + tw + turn, flash ? [1, .85, .7] : col, pitch - rear * front - lean * .25); };
+  const c = crouch * .6, health = v.plates ?? (v.max ? v.hp / v.max : 1);
+
+  // hind legs
   for (const [side, a, knee] of [[-1, lL, kneeL], [1, lR, kneeR]]) {
-    const bend = knee ?? .2 + c * 2, ky = 1 - c - Math.cos(a) * .48, kz = -Math.sin(a) * .48, fy = ky - Math.cos(a + bend) * .46, fz = kz - Math.sin(a + bend) * .46;
-    box(side * .34, (1 - c + ky) / 2, kz / 2, .44, .54, .48, CANVAS, 0, a);
-    box(side * .36, (ky + fy) / 2, (kz + fz) / 2, .36, .5, .4, HIDE2, 0, a + bend);
-    box(side * .36, ky, kz + .2, .3, .24, .14, GAUNT, 0, a);
-    box(side * .38, fy + .08, fz + .1, .46, .2, .6, CANVAS);
+    const bend = knee ?? .5 + crouch * 1.6, ky = 1.12 - c - Math.cos(a - .35) * .52, kz = -.72 - Math.sin(a - .35) * .52;
+    const fy = Math.max(.1, ky - Math.cos(a - .35 + bend) * .52), fz = kz - Math.sin(a - .35 + bend) * .52;
+    box(side * .46, (1.12 - c + ky) / 2, (-.72 + kz) / 2, .4, .62, .5, CANVAS, 0, a - .35);
+    box(side * .48, (ky + fy) / 2, (kz + fz) / 2, .32, .56, .38, HIDE2, 0, a - .35 + bend);
+    box(side * .48, ky, kz + .2, .28, .24, .14, GAUNT, 0, a);
+    box(side * .49, fy, fz + .14, .44, .2, .6, CANVAS);
   }
-  box(0, 1.04 - c, 0, .82, .3, .54, CANVAS);
-  box(0, 1.17 - c, 0, .88, .12, .58, GAUNT);
-  box(0, 1.17 - c, .3, .2, .16, .05, AMBER, 3);
-  tw = twist * .5;
-  for (const ax of [-.17, .17]) for (let r = 0; r < 3; r++) box(ax, 1.31 + r * .14 - c, .21, .28, .12, .1, HIDE);
-  box(0, 1.45 - c, -.02, .68, .46, .42, HIDE2);
-  tw = twist;
-  box(0, 1.9 - c, -.04, 1.36, .56, .72, HIDE);
-  box(-.33, 1.9 - c, .34, .58, .42, .14, HIDE2); box(.33, 1.9 - c, .34, .58, .42, .14, HIDE2);
-  box(0, 2.2 - c, -.14, .92, .22, .5, HIDE2);                                // traps
-  box(0, 1.95 - c, -.43, .18, .72, .1, MANE);
-  if (health > .33) for (const side of [-1, 1]) box(side * .34, 1.9 - c, .44, .5, .36, .08, RIVET);    // chest plates
-  if (health > .66) { box(0, 2.0 - c, -.5, .9, .46, .08, GAUNT); box(0, 1.5 - c, .24, .6, .36, .08, GAUNT); }  // back and belly
-  box(.2, 1.84 - c, .42, .05, .46, .02, MANE, 0, 0);                          // old scar
-  box(0, 2.34 - c, .22, .4, .36, .4, HIDE);
-  box(0, 2.46 - c, .42, .44, .1, .1, HIDE2);                                  // heavy brow
-  box(-.1, 2.38 - c, .43, .1, .045, .02, AMBER, 3); box(.1, 2.38 - c, .43, .1, .045, .02, AMBER, 3);
-  box(0, 2.2 - c, .4, .34, .13, .1, HIDE2);
-  box(-.11, 2.2 - c, .46, .06, .11, .05, MANE); box(.11, 2.2 - c, .46, .06, .11, .05, MANE);
-  for (let i = 0; i < 4; i++) box(0, 2.6 - c - i * .035, .32 - i * .13, .11, .18, .14, MANE, 0, -.25);
+  // hips and belt
+  box(0, 1.18 - c, -.72, .86, .56, .66, CANVAS);
+  box(0, 1.22 - c, -.4, .92, .62, .14, GAUNT);
+
+  // the tail: segment by segment from the hips, ending in an iron club
+  {
+    const wind = m === 'charge' ? clamp(t / .5, 0, 1) : 0, sway = Math.sin(time * 2.6) * .12 + w * run * .25;
+    let at = [0, 1.28 - c, -1.0];
+    for (let i = 0; i < 8; i++) {
+      const k = (i + 1) / 8, len = whack ? .46 : .3;
+      // resting it curls up and over; winding up it coils aside; whacking it is straight and level
+      const climb = whack ? -.05 : m === 'brace' ? -.2 : -.15 + k * 1.5 - run * .5 * k - wind * .6 * k;
+      const swing = whack ? .06 * i : sway * k * 2 + wind * 1.9 * k;
+      const next = [at[0] + Math.sin(swing) * Math.cos(climb) * len, Math.max(.15, at[1] + Math.sin(climb) * len), at[2] - Math.cos(swing) * Math.cos(climb) * len];
+      const thick = .42 - i * .028;
+      box((at[0] + next[0]) / 2, (at[1] + next[1]) / 2, (at[2] + next[2]) / 2, thick, thick, len * 1.12, i % 2 ? HIDE : HIDE2, 0, climb, -swing);
+      if (health > .33 && i % 2 === 0) box((at[0] + next[0]) / 2, (at[1] + next[1]) / 2 + thick * .55, (at[2] + next[2]) / 2, .1, .16, .16, MANE, 0, climb, -swing);
+      at = next;
+    }
+    box(at[0], at[1], at[2], .56, .5, .56, GAUNT, 0, 0, time * (whack ? 20 : 0));
+    box(at[0], at[1], at[2], .66, .12, .66, RIVET, 0, 0, time * (whack ? 20 : 0));
+    for (const [dx, dy, dz] of [[.34, 0, 0], [-.34, 0, 0], [0, .32, 0], [0, 0, -.34]]) box(at[0] + dx, at[1] + dy, at[2] + dz, .14, .14, .14, MANE, 0, .78);
+    if (wind >= 1) box(at[0], at[1] + .42, at[2], .18, .18, .18, AMBER, 3, time * 8);
+    if (whack) for (let i = 1; i < 14; i++) {                // the arc it cuts
+      const q = -i * .2, r = 4.3, ang = face + 3.14159 + q;
+      push(v.x + Math.sin(ang) * r * 1.2, v.y + 1.8, v.z + Math.cos(ang) * r * 1.2, 3, 1.1, .35 * (1 - i / 14), .18, ang, AMBER);
+    }
+  }
+
+  // barrel chest and shoulders, sloping down to the hips
+  front = .5; tw = twist * .5;
+  box(0, 1.34 - c, -.22, .78, .6, .66, HIDE2);
+  for (const side of [-1, 1]) for (let r = 0; r < 3; r++) box(side * .2, 1.06 - c + r * .02, -.42 + r * .22, .3, .1, .16, HIDE);
+  front = 1; tw = twist;
+  box(0, 1.6 - c, .32, 1.36, .72, .84, HIDE);
+  box(-.33, 1.46 - c, .76, .58, .42, .14, HIDE2); box(.33, 1.46 - c, .76, .58, .42, .14, HIDE2);
+  box(0, 2.0 - c, .22, .92, .22, .62, HIDE2);                                // traps
+  for (let i = 0; i < 6; i++) box(0, 2.14 - c - i * .1, .42 - i * .24, .14, .2, .18, MANE, 0, -.3);   // mane down the spine
+  if (health > .33) for (const side of [-1, 1]) box(side * .34, 1.54 - c, .82, .5, .36, .08, RIVET);    // chest plates
+  if (health > .66) box(0, 2.14 - c, .2, .9, .08, .56, GAUNT);                // back plate
+  box(.2, 1.5 - c, .85, .05, .4, .02, MANE);                                   // old scar
+  // head, carried low and forward: heavy brow, burning eyes, tusks
+  box(0, 1.9 - c, .98, .5, .44, .46, HIDE);
+  box(0, 1.76 - c, 1.28, .38, .24, .26, HIDE2);                               // muzzle
+  box(0, 2.06 - c, 1.2, .54, .11, .12, HIDE2);
+  for (const side of [-1, 1]) {
+    box(side * .13, 1.96 - c, 1.215, .11, .055, .02, AMBER, 3);
+    box(side * .17, 1.7 - c, 1.4, .07, .2, .07, MANE, 0, -.4);
+    box(side * .26, 2.18 - c, .84, .1, .26, .1, MANE, 0, -.7);
+  }
   for (const [side, [a, sweep, bend]] of [[-1, aL], [1, aR]]) {
-    const sx = side * .86, cs = Math.cos(sweep), sn = Math.sin(sweep);
-    const put = (y, z, bw, bh, bd, col, mat, pitch) => box(sx + z * sn, y, z * cs, bw, bh, bd, col, mat, pitch, sweep);
-    const top = 2.02 - c, ey = top - Math.cos(a) * .6, ez = -Math.sin(a) * .6, f = a + bend, hy = ey - Math.cos(f) * .62, hz = ez - Math.sin(f) * .62;
-    box(sx, top + .03, -.03, .6, .56, .6, HIDE);                             // shoulder
-    if (health > .66) box(side * 1.16, top + .08, -.03, .14, .5, .6, RIVET);
-    box(side * .98, top + .34, -.03, .42, .12, .5, GAUNT); box(side * 1.02, top + .46, -.03, .12, .18, .12, RIVET);
+    const sx = side * .84, cs = Math.cos(sweep), sn = Math.sin(sweep);
+    const put = (y, z, bw, bh, bd, col, mat, pitch) => box(sx + z * sn, y, .45 + z * cs, bw, bh, bd, col, mat, pitch, sweep);
+    const top = 1.68 - c, ey = top - Math.cos(a) * .6, ez = -Math.sin(a) * .6, f = a + bend, hy = ey - Math.cos(f) * .62, hz = ez - Math.sin(f) * .62;
+    box(sx, top + .03, .42, .6, .56, .6, HIDE);                               // shoulder
+    if (health > .66) box(side * 1.14, top + .08, .42, .14, .5, .6, RIVET);
+    box(side * .96, top + .34, .42, .42, .12, .5, GAUNT); box(side * 1.0, top + .46, .42, .12, .18, .12, RIVET);
     put((top + ey) / 2, ez / 2, .42, .62, .44, HIDE2, 0, a);
     put((ey + hy) / 2, (ez + hz) / 2, .46, .6, .48, HIDE, 0, f);
     put(ey + (hy - ey) * .62, ez + (hz - ez) * .62, .56, .36, .58, GAUNT, 0, f);
     put(ey + (hy - ey) * .5, ez + (hz - ez) * .5, .6, .07, .62, RIVET, 0, f);
-    put(hy - Math.cos(f) * .14, hz - Math.sin(f) * .14, .6, .42, .6, GAUNT, 0, f);
-    put(hy - Math.cos(f) * .34, hz - Math.sin(f) * .34, .52, .09, .5, RIVET, 0, f);
+    put(hy - Math.cos(f) * .1, hz - Math.sin(f) * .1, .58, .38, .62, GAUNT, 0, f);
+    put(hy - Math.cos(f) * .26, hz - Math.sin(f) * .26, .5, .09, .5, RIVET, 0, f);
   }
-  if (v.enraged) for (let i = 0; i < 6; i++) { const a = time * 3 + i * 1.05; push(v.x + Math.sin(a) * 2.4, v.y + .6 + (time * 2.5 + i * .6) % 3.4, v.z + Math.cos(a) * 2.4, 3, .16, .5, .16, a, AMBER); }
+  if (v.enraged) for (let i = 0; i < 6; i++) { const a = time * 3 + i * 1.05; push(v.x + Math.sin(a) * 2.6, v.y + .6 + (time * 2.5 + i * .6) % 3.4, v.z + Math.cos(a) * 2.6, 3, .16, .5, .16, a, AMBER); }
 }
 // you, when playing him: translate the player's current move into the same poses
 const MY_TIMES = { combo: .22, dash: .28, wave: .26, whirl: 9, leap: 1.1, rise: .4, rain: .6, blink: .15 };
@@ -4643,7 +4717,7 @@ function setView(eye, f, roll, fov, time, aspect, focus) {
 }
 // frame a fighter so he stands at screen position ndc (-1 left … 1 right)
 function previewCamera(time, aspect) {
-  const [d, mid] = { hero: [5.4, 1.2], cinder: [8.2, 1.85], brute: [10.8, 2.2], halo: [6, 1.35], slash: [8.2, 1.4], shoot: [6, 1.3] }[preview.kind], fov = 42;
+  const [d, mid] = { hero: [5.4, 1.2], cinder: [8.2, 1.85], brute: [11.6, 1.9], halo: [7.8, 1.7], slash: [8.2, 1.4], shoot: [6, 1.3] }[preview.kind], fov = 42;
   const f = norm([0, -.04, 1]), r = norm(cross(f, [0, 1, 0])), side = preview.ndc * d * Math.tan(fov * Math.PI / 360) * aspect;
   setView([0, 1, 2].map(i => [0, mid, 0][i] - f[i] * d - r[i] * side), f, 0, fov, time, aspect, [0, 0, 0]);
 }
@@ -4958,7 +5032,7 @@ function render(dt, time, alpha = 1) {
 // ───────────────────────── events + loop ─────────────────────────
 const locked = () => document.pointerLockElement === canvas;
 // ───────────────────────── online 1v1 (WebRTC, peer to peer) ─────────────────────────
-const PROTO = 9;
+const PROTO = 10;
 const PEER_LIB = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';   // only loaded when you go online
 const LOCAL_NET = new URLSearchParams(location.search).get('net') === 'local';   // two tabs on one computer, for testing
 // the parts of a fighter the other side needs in order to draw them
@@ -5180,7 +5254,7 @@ function showThrows(list) {
 const CALLS = {
   hero: { cross: 'CROSSFALL', meteor: 'METEOR DROP', storm: 'REAPER SPHERE', wire: 'TRIPWIRE', whirl: 'WRECKING BALL', orbit: 'ORBIT', spin: 'CYCLONE' },
   cinder: { whirl: 'FIRE WHEEL', dash: 'EMBER DASH', leap: 'COMET CLEAVE', wave: 'CROSS FLARE', rise: 'PHOENIX RISE', rain: 'EMBER RAIN' },
-  brute: { brace: 'BRACE', charge: 'TITAN PUNCH', dash: 'BULL RUSH', rip: 'LANDSLIDE', slam: 'LANDSLIDE', clap: 'THUNDERCLAP', kickwind: 'TITAN KICK', quake: 'CATACLYSM', ragdoll: 'RAGDOLL' },
+  brute: { brace: 'BRACE', charge: 'TAIL WHACK', dash: 'BULL RUSH', rip: 'LANDSLIDE', slam: 'LANDSLIDE', clap: 'THUNDERCLAP', kickwind: 'TITAN KICK', quake: 'CATACLYSM', ragdoll: 'RAGDOLL' },
   halo: { charge: 'COMET PUNCH', beam: 'SUN GAZE', dive: 'SKYFALL', gale: 'GALE', boom: 'SONIC BURST', flare: 'SOLAR FLARE' },
   shoot: { roll: 'RELOAD ROLL', cannon: 'SIEGE CANNON' },
   slash: { stab: 'PIERCING STAB', dash: 'AIR DASH CUT', split: 'SKYSPLITTER', wave: 'SWORD WAVE', rise: 'RISING CUT', parry: 'PARRY', horizon: 'HORIZON CUT' },
