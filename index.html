@@ -318,7 +318,7 @@ const P = {};
 function resetPlayer() {
   Object.assign(P, { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: .7, grounded: true, wall: null,
     charge: -1, airJumps: 1, dashes: 2, dash: 0, dashDir: [0,0,1], act: null, cm: null, leapCharge: -1, leaping: false, rushCd: 0, stunT: 0, parryCd: 0, cuts: 2, ultLock: 0, cooled: true, held: null, flying: false, beam: null, swings: 0, hp: 100, iframe: 0, hurtT: 0, style: 0, zipT: 0, atkBuf: 0, hold: 0, cross: null, crossUsed: false, spin: null, chainHits: 0, lastHit: -9, storm: null, meteor: null, guill: null, kick: null, orbit: null, wire: null,
-    reelBlock: null, whirl: null, carving: null, wasCarving: false, carveY: undefined, slashSide: 1, glide: false, dive: false, apex: 0,
+    reelBlock: null, whirl: null, carving: null, wasCarving: false, carveY: undefined, slashSide: 1, glide: false, dive: false, peak: 0,
     punch: 0, cool: 0, phase: 0, holding: null, coyote: 0, wallLock: 0, spaceAir: 0,
     h: 2, slide: false, slideCd: 0, mantle: null, jumpBuf: 0, landT: 1, airPress: false, px: 0, py: 0, pz: 0, chain: null, lash: null, reel: null, slashT: 0 });
   cam.dip = 0; cam.roll = 0; cam.low = 0;
@@ -931,7 +931,7 @@ function specialMove(dt, wx, wz, crouchKey) {
   if (m) {
     m.t += dt;
     if (m.t < .09) return true;                             // ball shoots down first, then yanks
-    P.dive = true; P.vy = -120; P.apex = Math.max(P.apex, P.y);
+    P.dive = true; P.vy = -120; P.peak = Math.max(P.peak, P.y);
     return true;
   }
   const g = P.guill;
@@ -2157,7 +2157,7 @@ function stepPlayer(dt) {
       P.yaw += Math.atan2(Math.sin(t - P.yaw), Math.cos(t - P.yaw)) * Math.min(1, 14 * dt);
     }
   }
-  P.apex = P.dive ? P.apex : P.y;
+  P.peak = P.dive ? P.peak : P.y;
 
   // integrate + collide
   const wasGrounded = P.grounded, impact = P.vy, speedIn = Math.hypot(P.vx, P.vz);
@@ -2196,7 +2196,7 @@ function stepPlayer(dt) {
     P.landT = 0;
     cam.dip = clamp(-impact * .014, 0, .8);
     if (who === 'brute' && P.cm?.name !== 'slam' && (P.leaping || impact < -34)) titanLand(-impact);
-    else if (P.dive) { act('slam', .34); slam(Math.max(24, (P.apex - P.y) + 30)); jolt(1.2, .1); P.meteor = null; }
+    else if (P.dive) { act('slam', .34); slam(Math.max(24, (P.peak - P.y) + 30)); jolt(1.2, .1); P.meteor = null; }
     else if (impact < -60 && !P.chain?.zip && !(P.zipT > .6)) slam(8);
     else if (impact < -18) { dust(P.x, P.y, P.z, 10, 7); sfx(.25, 400, .18); }
     P.dive = false;
