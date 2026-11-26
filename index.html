@@ -1075,7 +1075,7 @@ function cinderActions(look) {
 // Only her ultimate can bring a building down; everything else just nicks it.
 const PARRY_TIME = .35, PARRY_COOLDOWN = 3, HORIZON_WIND = .9, HORIZON_REACH = 60;
 function slashActions(look) {
-  const m = P.cm, free = (!m || m.name === 'combo' && m.t > .22) && P.cool <= 0;
+  const m = P.cm, free = (!m || m.name === 'combo' && m.t > (m.n === 2 ? .28 : .17)) && P.cool <= 0;
   if (P.grounded) P.cuts = 2;
   if (pressed.has('mouse0')) { P.atkBuf = .2; P.hold = 0; }
   P.atkBuf -= STEP;
@@ -1087,7 +1087,7 @@ function slashActions(look) {
     P.lastHit = clock;
     startCm('combo', { n: P.swings, aim: aimYaw() }); style('slash', 5); sfx(.5, 700, .16);
   }
-  if (P.hold > .26 && !P.crossUsed && (!m || m.name === 'combo')) { P.crossUsed = true; startCm('charge', { power: 0 }); say('DRAW SLASH', .8); }
+  if (P.hold > .22 && !P.crossUsed && (!m || m.name === 'combo')) { P.crossUsed = true; startCm('stab', { done: false }); style('kick', 8); sfx(.7, 900, .25); }
   if (pressed.has('mouse2') && free && P.cuts > 0) {
     P.cuts--; startCm('dash', { d: look.slice(), hit: false }); style('dash', 8); sfx(.7, 1300, .25);
   }
@@ -1125,32 +1125,29 @@ function slashMove(dt) {
   if (m.name === 'combo') {                                  // wide, heavy, each one a step forward
     P.yaw = m.aim; P.punch = .1;
     const big = m.n === 2;
-    if (!m.done && m.t > .12) { m.done = true; cut(4, 1.6, big ? 2.8 : 2.2); bite(big ? 8 : 7, big ? 28 : 16); dust(P.x + Math.sin(P.yaw) * 4, P.y, P.z + Math.cos(P.yaw) * 4, big ? 14 : 5, 8); jolt(big ? .6 : .25, big ? .05 : .02); }
-    if (m.t > .05 && m.t < .14 && P.grounded && !enemyNear(3)) { P.vx = Math.sin(P.yaw) * 16; P.vz = Math.cos(P.yaw) * 16; }
-    if (m.t > (big ? .42 : .3)) { if (big) P.cool = .2; done(); }
+    if (!m.done && m.t > .07) { m.done = true; cut(4, 1.6, big ? 2.8 : 2.2); bite(big ? 8 : 7, big ? 15 : 9); dust(P.x + Math.sin(P.yaw) * 4, P.y, P.z + Math.cos(P.yaw) * 4, big ? 14 : 5, 8); jolt(big ? .6 : .25, big ? .05 : .02); }
+    if (m.t > .02 && m.t < .09 && P.grounded && !enemyNear(3)) { P.vx = Math.sin(P.yaw) * 16; P.vz = Math.cos(P.yaw) * 16; }
+    if (m.t > (big ? .28 : .19)) { if (big) P.cool = .1; done(); }
     return false;
   }
-  if (m.name === 'charge') {
-    P.yaw = cam.yaw; m.power = Math.min(1, m.t / .8); P.vx *= 1 - 6 * dt; P.vz *= 1 - 6 * dt;
-    if (!keys.has('mouse0')) { P.cm = { name: 'draw', t: 0, power: m.power, spin: 0, cd: 0 }; sfx(1, 1500, .3); }
-    return false;
-  }
-  if (m.name === 'draw') {                                   // one very fast long cut
-    P.punch = .1;
-    if (!m.done) {
-      m.done = true;
-      for (let d = 4; d <= 6 + m.power * 8; d += 4) cut(d, 1.6, 2.4);
-      if (bite(9 + m.power * 8, 30 + m.power * 42) && !E.dead) Object.assign(E, { vx: Math.sin(P.yaw) * 40, vz: Math.cos(P.yaw) * 40, vy: 14, stun: .5 });
-      jolt(.9, .08);
+  if (m.name === 'stab') {                                   // thrust: little damage, a long shove
+    P.yaw = cam.yaw; P.punch = .1;
+    const push_ = Math.max(0, 1 - m.t / .2) * 26;
+    P.vx = Math.sin(P.yaw) * push_; P.vz = Math.cos(P.yaw) * push_;
+    if (!m.done && m.t > .1) {
+      m.done = true; cut(5, 1.6, 2.2);
+      if (facingEnemy(P.yaw, .6) && enemyNear(8.5) && bite(8.5, 16) && !E.dead) {
+        Object.assign(E, { vx: Math.sin(P.yaw) * 70, vz: Math.cos(P.yaw) * 70, vy: 12, stun: .55, flung: true });
+        jolt(.9, .07); say('SKEWERED', .6);
+      }
     }
-    P.vx = Math.sin(P.yaw) * 30 * Math.max(0, 1 - m.t / .18); P.vz = Math.cos(P.yaw) * 30 * Math.max(0, 1 - m.t / .18);
-    if (m.t > .5) { P.cool = .15; done(); }                   // slow to recover if it misses
+    if (m.t > .38) { P.cool = .25; done(); }
     return false;
   }
   if (m.name === 'dash') {                                   // cut along the aim; a hit gives the dash back
     const d = m.d, v = 68;
     P.vx = d[0] * v; P.vy = d[1] * v; P.vz = d[2] * v; P.yaw = Math.atan2(d[0], d[2]);
-    cut(2.5, 1.4 + d[1] * 2.5, 1.8, 12);
+    cut(2.5, 1.4 + d[1] * 2.5, 2.8, 16);
     if (!m.hit && bite(5.5, 22)) { m.hit = true; P.cuts = Math.min(2, P.cuts + 1); jolt(.4, .04); }
     if (m.t > .24) { P.vx *= .3; P.vy *= .25; P.vz *= .3; P.cool = m.hit ? 0 : .25; done(); }
     return true;
@@ -1219,7 +1216,7 @@ function horizonCut(x, y, z, yaw, mine) {
 }
 
 // ───────── SHOOTYGAL: fast, fragile up close, deadly with room to aim ─────────
-const AMMO = 12, RELOAD = 1.4, CANNON_BUILD = 2, BULLET = 190;
+const AMMO = 12, RELOAD = 1.4, CANNON_BUILD = 2, BULLET = 190, CANNON_GUARD = .5;
 const GUNFIRE = new Set(['shot', 'pellet', 'net', 'flash', 'ric', 'ball']);
 // a shot in flight; waves already travel, draw and cross the network
 function fire(from, d, kind, speed, life, extra = {}) {
@@ -1302,7 +1299,7 @@ function shootyActions(look) {
   }
   if (pressed.has('KeyQ') && free) {
     if (P.style < 100) say('STYLE ' + (P.style | 0) + '%', .7);
-    else { spendUlt(); dropChain(false); startCm('cannon', { aim: cam.yaw, tilt: 0, shots: 2, gap: 0, taken: 0, left: 3 }); say('SIEGE CANNON', 1.6); sfx(1, 300, 1.4); }
+    else { spendUlt(); dropChain(false); startCm('cannon', { aim: cam.yaw, tilt: 0, shots: 2, gap: 0, left: 3 }); say('SIEGE CANNON', 1.6); sfx(1, 300, 1.4); }
   }
 }
 function cannonFire(m) {
@@ -2266,6 +2263,7 @@ function stepMantle(dt) {
 }
 
 function stepPlayer(dt) {
+  if (P.cm?.name === 'cannon') P.stunT = 0;                 // nothing stuns her off the cannon
   if (P.stunT > 0) {                                        // stunned by the other player
     P.stunT -= dt; P.vx = P.vz = 0; P.cm = P.cross = P.chain = P.act = P.spin = null;
     if (!moveAxis('y', -14 * dt)) P.grounded = false;
@@ -2537,7 +2535,7 @@ const ROSTER = {
       ['KeyZ', 'Sonic Burst', 'Shockwave all around you'], ['KeyQ', 'Solar Flare', 'Ultimate: erupt like a small sun']] },
   slash: { name: 'SLASHYGAL', role: 'Greatsword duelist', stats: [4, 3, 4, 3], speed: 1.02, jump: 1, armor: .82, power: 1.35, hp: 1180, size: .9, deal: 1.22, camH: 3.1, camD: 8, tempo: .92,
     desc: 'A white-haired swordfighter dragging a blade taller than she is. Few swings, long reach, heavy hits. Miss one and she is wide open.',
-    moves: [['mouse0', 'Heavy Cuts', 'Three wide slashes, each a step forward'], ['mouse0', 'Draw Slash (hold)', 'Charge, then one very fast long cut'],
+    moves: [['mouse0', 'Heavy Cuts', 'Three wide slashes, each a step forward'], ['mouse0', 'Piercing Stab (hold)', 'A thrust that drives them far away'],
       ['mouse2', 'Air Dash Cut', 'Slice along your aim; a hit gives the dash back'], ['KeyC', 'Blade Surf', 'Slide on the sword; hold against a wall to ride down it'],
       ['KeyF', 'Skysplitter', 'One long downward slash, from a hop or from height'], ['KeyG', 'Sword Wave', 'A flying crescent; walls stop it'], ['KeyT', 'Rising Cut', 'Launch them into the air'],
       ['KeyZ', 'Parry', 'A split second that turns any hit back. 3 s cooldown'], ['KeyQ', 'Horizon Cut', 'Ultimate: a warning line, a pause, then towers along it slide apart']] },
@@ -2546,7 +2544,7 @@ const ROSTER = {
     moves: [['mouse0', 'Fire', 'Rifle: one precise round. Shotgun: brutal up close, weak at range'], ['mouse0', 'Triple burst (hold)', 'Rifle only: three quick rounds'], ['mouse2', 'Scope (hold)', 'Rifle only: zoom in and walk'], ['KeyV', 'Switch weapon', 'Rifle or shotgun'],
       ['KeyT', 'Jump pad', 'Launches whoever steps on it'], ['KeyF', 'Trip mine', 'Arms itself, then throws them into the air'], ['KeyG', 'Net', 'Shoves them back; stops a charge dead'],
       ['KeyZ', 'Flash round', 'Whites out their screen'], ['KeyX', 'Ricochet shot', 'Bounces once off a wall and hits harder'], ['KeyR', 'Reload roll', 'Dodge and refill the magazine'],
-      ['KeyQ', 'Siege Cannon', 'Ultimate: plant for 2 s while it builds, then fire two tower-levelling shells']] },
+      ['KeyQ', 'Siege Cannon', 'Ultimate: plant while it builds, then fire two tower-levelling shells. Half damage taken, cannot be broken']] },
 };
 const LABELS = {
   hero: { combo: 'SICKLE FLURRY', wave: 'SICKLE THROW', dash: 'CHAIN RUSH', cross: 'CROSSFALL', leap: 'METEOR DROP', sphere: 'REAPER SPHERE', blink: 'VANISH' },
@@ -2623,12 +2621,14 @@ function damageEnemy(dmg) {
     }
     E.poked++; E.pokeT = 3;
   }
+  const braced = foe === 'shoot' && E.move === 'cannon' && (E.state === 'wind' || E.state === 'act');
+  if (braced) dmg *= CANNON_GUARD;
   if (E.state === 'rest') dmg *= 1.5;                       // punish window after his attacks
   const taken = Math.min(E.hp, dmg * (ROSTER[who].deal || 1) / trim());
   E.hp -= taken; E.inv = .12; E.hurtT = .18; chargeUlt(taken / E.max * 100);
   for (let i = 0; i < 10; i++) debris(E.x, E.y + 1.6, E.z, rr(.1, .28), [1, .5, .15], rr(-14, 14), rr(0, 14), rr(-14, 14), rr(.2, .6));
   hitStop = Math.max(hitStop, .03); sfx(.6, 1800, .12);
-  if (dmg >= (foe === 'brute' ? 40 : 18) && !(E.poise > 0) && (E.state === 'wind' || E.state === 'rest')) {   // heavy hits knock him out of it
+  if (!braced && dmg >= (foe === 'brute' ? 40 : 18) && !(E.poise > 0) && (E.state === 'wind' || E.state === 'rest')) {   // heavy hits knock him out of it
     E.poise = 1.6;
     E.state = 'idle'; E.cd = .5;
     const d = Math.hypot(E.x - P.x, E.z - P.z) || 1;
@@ -2662,9 +2662,9 @@ function hurtPlayer(dmg, fx, fz, knock = 18) {
   const loss = rawDamage ? dmg : dmg * ROSTER[foe].power * ROSTER[who].armor * trim();
   P.hp -= loss; P.iframe = .55; P.hurtT = .35;
   const planted = who === 'shoot' && P.cm?.name === 'cannon';
-  if (planted && P.cm.t < CANNON_BUILD && (P.cm.taken += loss) >= 14) { P.cm = null; P.style = 50; say('CANNON BROKEN', 1.2); }
+  if (planted) P.hp += loss * (1 - CANNON_GUARD);          // braced behind the gun
   const dx = P.x - fx, dz = P.z - fz, d = Math.hypot(dx, dz) || 1;
-  const steady = who === 'brute' || planted && !!P.cm;
+  const steady = who === 'brute' || planted;
   if (!steady || who === 'brute' && dmg >= 22) { dropChain(false); P.spin = P.cm = P.cross = P.orbit = P.guill = P.meteor = P.wall = null; P.dive = P.slide = false; }
   if (steady) knock *= who === 'brute' ? .35 : 0;
   P.vx = dx / d * knock; P.vz = dz / d * knock; P.vy = Math.max(P.vy, steady ? 4 : 11); P.grounded = false;
@@ -2741,7 +2741,8 @@ function stepShots(dt) {
     }
     if (w.kind === 'arc') {
       if (buildingAt(w.p)) {                                  // a notch in the wall, and it is spent
-        if (w.mine) { byEnemy = true; carve(...w.p, 2, 14); byEnemy = false; } else wreck(...w.p, 2, 14);
+        const bite = [w.p[0] + w.v[0] / 62 * 1.2, w.p[1], w.p[2] + w.v[2] / 62 * 1.2];     // a little way into the wall
+        if (w.mine) { byEnemy = true; carve(...bite, 3.6, 18); byEnemy = false; } else wreck(...bite, 3.6, 18);
         waves.splice(i, 1); continue;
       }
       disturb(w.p[0], w.p[1], w.p[2], 2.5);                  // cars and people in the way
@@ -2933,6 +2934,7 @@ function stepEnemy(dt) {
   const m = MOVES[E.move];
 
   E.poise -= dt;
+  if (foe === 'shoot' && E.move === 'cannon' && (E.state === 'wind' || E.state === 'act')) E.stun = E.dazed = 0;
   if (E.stun > 0 && !E.stunned) {                            // a fresh knockdown
     E.stunned = true; E.stunFor = 0;
     if (foe === 'brute') E.stun *= .35;                      // the giant barely budges
@@ -3215,12 +3217,12 @@ function drawGal(v, time) {
   const ease = (a, b, k) => a + (b - a) * clamp(k, 0, 1);
   if (run) { hand = [.55, 1.2, -.15]; turn = Math.PI * .94; rise = -.27; }                 // dragged behind
   if (on && mv === 'combo') {
-    const n = v.n ?? ((t / .25 | 0) % 3), k = (v.n === undefined ? t % .25 : t) / .17;
+    const n = v.n ?? ((t / .25 | 0) % 3), k = (v.n === undefined ? t % .25 : t) / .1;
     hand = [.2, 1.55, .55];
     if (n === 2) { turn = 0; rise = ease(1.5, -.45, k); }
     else { turn = n ? ease(-1.9, 1.7, k) : ease(1.9, -1.7, k); rise = n ? .15 : -.05; }
     if (st === 'wind') { turn = 2; rise = .6; }
-  } else if (mv === 'charge' || on && mv === 'draw' && st === 'wind') { hand = [-.7, 1.3, .1]; turn = Math.PI * 1.06; rise = 0; }
+  } else if (on && mv === 'stab') { hand = [.25, 1.6, ease(-.1, 1.1, (t - .06) / .08)]; turn = 0; rise = 0; }
   else if (on && (mv === 'draw' || mv === 'dash' || mv === 'wave' || mv === 'cross')) { hand = [.15, 1.55, .5]; turn = ease(2.3, -2.1, t / .12); rise = .05; }
   else if (on && (mv === 'split' || mv === 'leap')) { hand = [0, 2, .4]; turn = 0; rise = ease(1.45, -1.25, (t - .1) / .15); }
   else if (on && mv === 'rise') { hand = [.2, 1.5, .5]; turn = 0; rise = ease(-1, 1.45, t / .25); }
@@ -4840,7 +4842,7 @@ const CALLS = {
   brute: { charge: 'TITAN PUNCH', dash: 'BULL RUSH', rip: 'LANDSLIDE', slam: 'LANDSLIDE', clap: 'THUNDERCLAP', kickwind: 'TITAN KICK', quake: 'CATACLYSM', ragdoll: 'RAGDOLL' },
   halo: { charge: 'COMET PUNCH', beam: 'SUN GAZE', dive: 'SKYFALL', gale: 'GALE', boom: 'SONIC BURST', flare: 'SOLAR FLARE' },
   shoot: { roll: 'RELOAD ROLL', cannon: 'SIEGE CANNON' },
-  slash: { charge: 'DRAW SLASH', dash: 'AIR DASH CUT', split: 'SKYSPLITTER', wave: 'SWORD WAVE', rise: 'RISING CUT', parry: 'PARRY', horizon: 'HORIZON CUT' },
+  slash: { stab: 'PIERCING STAB', dash: 'AIR DASH CUT', split: 'SKYSPLITTER', wave: 'SWORD WAVE', rise: 'RISING CUT', parry: 'PARRY', horizon: 'HORIZON CUT' },
 };
 const ULTS = ['storm', 'rain', 'quake', 'ragdoll', 'flare', 'horizon', 'cannon'];
 function callOut(st) {
