@@ -778,7 +778,7 @@ function throwBlock(charge) {
 }
 
 // ── topple: the part of a weakened tower above its thinnest floor tips over as one piece ──
-let fallers = [];
+let fallers = [], gashes = [];             // gashes: the glowing edge a slanted cut leaves for a moment
 function topple() {
   if (truce.t > 0) return say('NOT DURING THE TRUCE', .8);
   const look = lookDir();
@@ -800,27 +800,42 @@ function topple() {
   dropChain(false); P.punch = .3; P.yaw = cam.yaw; act('yank', .7); style('topple', 22); jolt(.8, .06); sfx(1, 300, 1.2);
 }
 // everything above floor "cut" becomes one rigid falling piece. show = someone else toppled it
-function dropTower(b, cut, alongX, sign, show) {
+// diag: floors the cut climbs from the side it falls toward to the other, so the top slides off first
+function dropTower(b, cut, alongX, sign, show, diag = 0) {
   if (truce.t > 0) return;
   const { nx, ny, nz } = b, layer = nx * ny;
   const vox = b.vox = b.vox || new Uint8Array(nx * ny * nz).fill(1);
-  const parts = [];
-  const solid = (i, j, k) => i >= 0 && i < nx && k >= 0 && k < nz && j >= cut && j < ny && vox[i + nx * j + layer * k] > 0;
+  const parts = [], across = (alongX ? nx : nz) - 1;
+  const level = (i, k) => cut + Math.round(diag * (sign > 0 ? across - (alongX ? i : k) : alongX ? i : k) / across);
+  const solid = (i, j, k) => i >= 0 && i < nx && k >= 0 && k < nz && j >= level(i, k) && j < ny && vox[i + nx * j + layer * k] > 0;
   for (let k = 0; k < nz; k++) for (let j = cut; j < ny; j++) for (let i = 0; i < nx; i++) {
     if (!solid(i, j, k)) continue;
     if (solid(i-1,j,k) && solid(i+1,j,k) && solid(i,j-1,k) && solid(i,j+1,k) && solid(i,j,k-1) && solid(i,j,k+1)) continue;
     parts.push({ x: b.x + (i + .5) * V, y: (j + .5) * V, z: b.z + (k + .5) * V,
-      mat: 10 + ((i === 0) | (i === nx-1) << 1 | (j === ny-1) << 3 | (k === 0) << 4 | (k === nz-1) << 5) });
+      // pieces falling along x are drawn turned a quarter, so their outside walls turn with them
+      mat: 10 + (j === ny-1) * 8 + (alongX ? (k === nz-1) | (k === 0) << 1 | (i === 0) << 4 | (i === nx-1) << 5
+                                            : (i === 0) | (i === nx-1) << 1 | (k === 0) << 4 | (k === nz-1) << 5) });
   }
-  for (let k = 0; k < nz; k++) for (let j = cut; j < ny; j++) for (let i = 0; i < nx; i++) vox[i + nx * j + layer * k] = 0;
+  for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) for (let j = level(i, k); j < ny; j++) vox[i + nx * j + layer * k] = 0;
   b.falling = b.falling.filter(id => vox[id]);
   b.dirty = cityDirty = true;
   // hinge along the bottom edge on the side it falls toward
   const hinge = alongX ? (sign > 0 ? b.x + nx * V : b.x) : (sign > 0 ? b.z + nz * V : b.z);
-  fallers.push({ parts, color: b.color, alongX, sign, hinge, y: cut * V, a: .03, w: .12, check: 0, own: b, show, crushed: show });
+  fallers.push({ parts, color: b.color, alongX, sign, hinge, y: cut * V, a: .03, w: .12, check: 0, own: b, show, crushed: show, slid: 0, slide: diag ? 4.5 : 0, speed: 0, slope: diag / across });
+  if (!diag) return;
+  const x0 = b.x - .2, x1 = b.x + nx * V + .2, z0 = b.z - .2, z1 = b.z + nz * V + .2;
+  const edge = (x, z) => [x, (cut + .5 + ((alongX ? x === x1 : z === z1) === (sign > 0) ? 0 : diag)) * V, z];
+  gashes = gashes.filter(g => clock - g.at < GASH_TIME).concat({ at: clock, ring: [edge(x0, z0), edge(x1, z0), edge(x1, z1), edge(x0, z1)] });
+}
+const GASH_TIME = 1.6;
+function drawGashes() {
+  for (const g of gashes) {
+    const k = 1 - (clock - g.at) / GASH_TIME;
+    if (k > 0 && k <= 1) for (let i = 0; i < 4; i++) beamBox(g.ring[i], g.ring[(i + 1) % 4], .9 * k, .9 * k, [1, .25 + .6 * k * k, .2 + .5 * k * k], 3);
+  }
 }
 function fallerPoint(f, q) {          // where a block of a tipping tower is now
-  const u = ((f.alongX ? q.x : q.z) - f.hinge) * f.sign, h = q.y - f.y;
+  const u = ((f.alongX ? q.x : q.z) - f.hinge) * f.sign + f.slid, h = q.y - f.y - f.slid * f.slope;
   const c = Math.cos(f.a), sn = Math.sin(f.a);
   const out = f.hinge + (u * c + h * sn) * f.sign, y = f.y + h * c - u * sn;
   return f.alongX ? [out, y, q.z] : [q.x, y, out];
@@ -842,7 +857,8 @@ function crush(f, reach) {
 function stepFallers(dt) {
   for (let n = fallers.length - 1; n >= 0; n--) {
     const f = fallers[n];
-    f.w += dt * (.25 + 1.5 * Math.sin(f.a)); f.a += f.w * dt;
+    if (f.slid < f.slide) { f.speed += 9 * dt; f.slid += f.speed * dt; }   // sliding down the cut
+    else { f.w += dt * (.25 + 1.5 * Math.sin(f.a)); f.a += f.w * dt; }
     if (f.a > .5) crush(f, 4.5);                             // under the falling mass
     rumble = .1;
     let landed = f.a > 2;
@@ -1227,18 +1243,33 @@ function onHorizon(px, pz, x, z, yaw, half) {
   const dx = px - x, dz = pz - z, f = dx * Math.sin(yaw) + dz * Math.cos(yaw);
   return f > -1 && f < HORIZON_REACH && Math.abs(dx * Math.cos(yaw) - dz * Math.sin(yaw)) < half;
 }
-// the one blow that takes towers apart: the first two it crosses slide off their bases
+// still tall enough to be worth slicing (the stump a slice leaves is not)
+const tall = b => !b.vox || b.vox.some((v, id) => v === 1 && (id / b.nx | 0) % b.ny >= 8);
+// the one blow that takes towers apart: the first two it crosses are sliced on the slant and slide off.
+// If the line crosses none, it takes the tower closest to the line, preferring ones in front.
 function horizonCut(x, y, z, yaw, mine) {
-  const fx = Math.sin(yaw), fz = Math.cos(yaw), done = new Set();
-  for (let d = 4; d < HORIZON_REACH && done.size < 2; d += 2.5) {
+  const fx = Math.sin(yaw), fz = Math.cos(yaw), targets = new Set();
+  for (let d = 4; d < HORIZON_REACH && targets.size < 2; d += 2.5) {
     const b = buildingAt([x + fx * d, 4.5, z + fz * d]);
-    if (!b || done.has(b)) continue;
-    done.add(b);
-    const alongX = Math.abs(fx) > Math.abs(fz), sign = Math.sign(alongX ? fx : fz) || 1;
-    dropTower(b, 1, alongX, sign, false);
+    if (b && tall(b)) targets.add(b);
+  }
+  if (!targets.size) {
+    let best = null, low = Infinity;
+    for (const b of buildings) {
+      const dx = b.x + b.nx * V / 2 - x, dz = b.z + b.nz * V / 2 - z, f = dx * fx + dz * fz;
+      const score = Math.abs(f) + 2 * Math.abs(dx * fz - dz * fx) + (f < 0 ? 400 : 0);
+      if (score < low && tall(b)) { low = score; best = b; }
+    }
+    if (best) targets.add(best);
+  }
+  // high on one side, low on the other, matching the swing; the top slides off the low side
+  const alongX = Math.abs(fz) > Math.abs(fx), sign = Math.sign(alongX ? -fz : fx) || 1;
+  for (const b of targets) {
+    const diag = Math.min((alongX ? b.nx : b.nz) - 1, b.ny - 3, 7);
+    dropTower(b, 1, alongX, sign, false, diag);
     const falling = fallers[fallers.length - 1];
     if (falling) falling.crushed = true;              // the cut already did its damage; no second hit
-    if (pvp && mine) netSend({ t: 'topple', i: buildings.indexOf(b), cut: 1, alongX, sign });
+    if (pvp && mine) netSend({ t: 'topple', i: buildings.indexOf(b), cut: 1, alongX, sign, diag });
   }
   for (let d = 4; d < HORIZON_REACH; d += 4) dust(x + fx * d, y, z + fz * d, 7, 12);
   if (mine) {
@@ -2629,7 +2660,7 @@ const ROSTER = {
     moves: [['mouse0', 'Heavy Cuts', 'Three wide slashes, each a step forward'], ['mouse0', 'Piercing Stab (hold)', 'A thrust that drives them far away'],
       ['mouse2', 'Air Dash Cut', 'Slice along your aim; a hit gives the dash back'], ['KeyC', 'Blade Surf', 'Slide on the sword; hold against a wall to ride down it'],
       ['KeyF', 'Skysplitter', 'One long downward slash. Right after a Rising Cut lands, it homes in'], ['KeyG', 'Sword Wave', 'A flying crescent; walls stop it'], ['KeyT', 'Rising Cut', 'Launch them into the air'],
-      ['KeyZ', 'Parry', 'A split second that turns any hit back. 1.5 s cooldown with cooldowns on'], ['KeyQ', 'Horizon Cut', 'Ultimate: aim the warning line with the mouse, then towers along it slide apart']] },
+      ['KeyZ', 'Parry', 'A split second that turns any hit back. 1.5 s cooldown with cooldowns on'], ['KeyQ', 'Horizon Cut', 'Ultimate: aim the warning line with the mouse. The sky darkens and a diagonal cut slices a tower apart']] },
   shoot: { name: 'SHOOTYGAL', role: 'Gunslinger and trapper', stats: [4, 5, 5, 2], speed: 1.22, jump: 1.05, armor: 1.05, power: 1.45, hp: 1100, netHp: 990, size: .8, deal: 1.1, camH: 3, camD: 7, tempo: 1.05,
     desc: 'The quickest on her feet, with a scoped rifle, a shotgun and a bag of tricks. Wants room to aim; hates being grabbed hold of up close. Twelve rounds, then she reloads.',
     moves: [['mouse0', 'Fire', 'Rifle: one precise round. Shotgun: brutal up close, weak at range'], ['mouse0', 'Triple burst (hold)', 'Rifle only: three quick rounds'], ['mouse2', 'Scope (hold)', 'Rifle only: zoom in and walk'], ['KeyV', 'Switch weapon', 'Rifle or shotgun'],
@@ -3318,6 +3349,8 @@ function drawGal(v, time) {
   beamBox(at(0, 2.42, -.18), at(sway, 2.05 + clamp(hs / 25, 0, 1) * .3, -.25 - back), .17, .17, col(GALHAIR));
   beamBox(at(sway, 2.05 + clamp(hs / 25, 0, 1) * .3, -.25 - back), at(sway * 2, 1.55 + clamp(hs / 25, 0, 1) * .6, -.3 - back * 1.8), .11, .11, col(GALHAIR));
 
+  // seconds since Horizon Cut's blow landed (negative while she is still drawing it back)
+  const since = v.since ?? (st === 'act' ? t : st === 'rest' ? .3 + t : -1);
   // where the sword is: hand position, and which way the blade points (turn, rise)
   let hand = [.55, 1.3, .2], turn = Math.PI * .62, rise = -.27;
   const ease = (a, b, k) => a + (b - a) * clamp(k, 0, 1);
@@ -3333,7 +3366,7 @@ function drawGal(v, time) {
   else if (on && (mv === 'split' || mv === 'leap')) { hand = [0, 2, .4]; turn = 0; rise = ease(1.45, -1.25, (t - .1) / .15); }
   else if (on && mv === 'rise') { hand = [.2, 1.5, .5]; turn = 0; rise = ease(-1, 1.45, t / .25); }
   else if (mv === 'parry' && on) { hand = [-.15, 1.4, .55]; turn = 1.35; rise = .55; }
-  else if (on && mv === 'horizon') { hand = [.65, 2.05, .2]; turn = t < HORIZON_WIND && st !== 'act' ? Math.PI : ease(2.6, -2.2, (t - HORIZON_WIND) / .1); rise = t < HORIZON_WIND ? .7 : 0; }
+  else if (on && mv === 'horizon') { hand = [.65, 2.05, .2]; turn = ease(2.6, -2.2, since / .12); rise = ease(1, -.55, since / .12); }
   else if (air) { hand = [.5, 1.5, 0]; turn = Math.PI * .8; rise = .35; }
   if (v.surf) { hand = [.1, .62, -.2]; turn = 0; rise = 0; }
 
@@ -3347,12 +3380,17 @@ function drawGal(v, time) {
   if (run && fxDt && Math.random() < fxDt * 45) { const p = along(len); quietly(() => debris(p[0], v.y + .15, p[2], rr(.07, .14), [1, .75, .3], rr(-4, 4), rr(2, 8), rr(-4, 4), rr(.15, .35))); }
   if (mv === 'horizon' && on && (st === 'wind' || t < HORIZON_WIND)) for (let d = 3; d < HORIZON_REACH; d += 3)   // the warning line
     for (const side of [-3.2, 0, 3.2]) push(v.x + sy * d + cy * side, v.y + .15, v.z + cy * d - sy * side, 3, side ? .14 : .35, .12, side ? 1.2 : 2.4, yaw, GALRED);
+  if (mv === 'horizon' && since >= 0 && since < .45) {      // the diagonal streak
+    const k = 1 - since / .45;
+    beamBox(at(9, 11, 7), at(-9, .2, 7), 1.1 * k, 1.1 * k, GALRED, 3);
+    beamBox(at(9, 11, 6.8), at(-9, .2, 6.8), .35 * k, .35 * k, [1, .9, .9], 3);
+  }
   if (v.enraged) for (let i = 0; i < 6; i++) { const q = time * 5 + i * 1.05; push(v.x + Math.sin(q) * 1.1, v.y + .4 + (time * 2 + i * .45) % 2.4, v.z + Math.cos(q) * 1.1, 3, .1, .1, .1, q, GALRED, q); }
 }
 function drawGalPlayer(time) {
   const m = P.cm;
   drawGal({ x: P.x, y: P.y, z: P.z, vx: P.vx, vz: P.vz, yaw: P.yaw, phase: P.phase, grounded: P.grounded || !!P.wall, hurtT: P.hurtT - .2, enraged: P.style >= 100,
-    surf: P.slide, state: m ? 'act' : 'idle', move: m ? m.name : '', t: m ? m.t : 0, n: m?.name === 'combo' ? m.n : undefined }, time);
+    surf: P.slide, since: m?.name === 'horizon' ? m.t - HORIZON_WIND : -1, state: m ? 'act' : 'idle', move: m ? m.name : '', t: m ? m.t : 0, n: m?.name === 'combo' ? m.n : undefined }, time);
 }
 
 const TEALCOAT = [.04, .42, .45], ORANGE = [1, .5, .08], GUNMETAL = [.17, .18, .22], BOB = [.12, .09, .14];
@@ -4272,7 +4310,7 @@ function buildFallers() {
 
 function buildDynamic(time) {
   buildScene(time);
-  if (!preview) drawRubble(fxDt);
+  if (!preview) { drawRubble(fxDt); drawGashes(); }
   drawFlames();
 }
 function buildScene(time) {
@@ -4439,7 +4477,8 @@ fn skyColor(d: vec3f) -> vec3f {
   var c = mix(vec3f(0.92, 0.62, 0.45), vec3f(0.13, 0.22, 0.45), pow(h, 0.45));
   let s = max(dot(d, normalize(SUN)), 0.0);
   c += vec3f(1.0, 0.75, 0.45) * (pow(s, 600.0) * 3.0 + pow(s, 8.0) * 0.25);
-  return c;
+  // u.player.w is how dark Horizon Cut has made the world, 0 to 1
+  return mix(c, mix(vec3f(0.2, 0.03, 0.07), vec3f(0.01, 0.01, 0.035), pow(h, 0.35)), u.player.w);
 }
 // 18 vertices: for each axis, only the face on the camera's side
 fn cube(vi: u32, toEye: vec3f) -> array<vec3f, 2> {
@@ -4472,10 +4511,11 @@ fn turn(p: vec3f, yaw: f32, pitch: f32, roll: f32) -> vec3f {
 fn shade(base: vec3f, n: vec3f, w: vec3f, emit: vec3f) -> vec4f {
   let sun = max(dot(n, normalize(SUN)), 0.0);
   let amb = mix(vec3f(0.25, 0.22, 0.24), vec3f(0.36, 0.44, 0.62), n.y * 0.5 + 0.5);
-  var c = base * (amb * mix(0.65, 1.1, clamp(w.y / 30.0, 0.0, 1.0)) + vec3f(1.15, 0.9, 0.68) * sun) + emit;
+  var c = base * (amb * mix(0.65, 1.1, clamp(w.y / 30.0, 0.0, 1.0)) + vec3f(1.15, 0.9, 0.68) * sun) * (1.0 - 0.68 * u.player.w) + emit;
   let v = w - u.eye.xyz; let d = length(v);
   let f2 = d * d * 0.0000045;
-  c = mix(c, mix(vec3f(0.92, 0.62, 0.45), vec3f(0.36, 0.36, 0.5), clamp(v.y / d * 1.6, 0.0, 1.0)), f2 / (1.0 + f2));
+  let haze = mix(mix(vec3f(0.92, 0.62, 0.45), vec3f(0.36, 0.36, 0.5), clamp(v.y / d * 1.6, 0.0, 1.0)), vec3f(0.1, 0.02, 0.05), u.player.w);
+  c = mix(c, haze, f2 / (1.0 + f2));
   return vec4f(c, 1.0);
 }`;
 
@@ -4676,12 +4716,17 @@ function flushDebris() {
 }
 
 function resetWorld() {
-  genCity(); initLife(); resetPlayer(); fallers = []; resetEnemy(); history = []; popup.t = 0; hitStop = 0; craters.fill(0); thrown.length = 0; debrisQueue.length = 0; truce.t = 0;
+  genCity(); initLife(); resetPlayer(); fallers = []; gashes = []; resetEnemy(); history = []; popup.t = 0; hitStop = 0; craters.fill(0); thrown.length = 0; debrisQueue.length = 0; truce.t = 0;
   device.queue.writeBuffer(partBuf, 0, new Float32Array(NDEB * 12));
   debrisLive = 0;
 }
 
+let dusk = 0;
 function render(dt, time, alpha = 1) {
+  // anyone's Horizon Cut darkens the world: mine, the computer's, or the other player's
+  const cutting = P.cm?.name === 'horizon' || pvp?.state?.s.cm?.name === 'horizon' ||
+    !E.dead && E.move === 'horizon' && (E.state === 'wind' || E.state === 'act');
+  dusk = preview ? 0 : dusk + ((cutting ? 1 : 0) - dusk) * Math.min(1, dt * (cutting ? 7 : 2));
   fxDt = dt;
   drawAlpha = alpha;
   resize();
@@ -4700,6 +4745,7 @@ function render(dt, time, alpha = 1) {
   device.queue.writeBuffer(dynBuf, 0, dynData, 0, dynCount * 12);
   if (fallCount) device.queue.writeBuffer(fallBuf, 0, fallData, 0, fallCount * 12);
   if (lifeCount) device.queue.writeBuffer(lifeBuf, 0, lifeData, 0, lifeCount * 12);
+  ubo[23] = dusk;
   device.queue.writeBuffer(uniformBuf, 0, ubo);
   device.queue.writeBuffer(dtBuf, 0, new Float32Array([dt, 0, 0, 0]));
 
@@ -4731,7 +4777,7 @@ function render(dt, time, alpha = 1) {
 // ───────────────────────── events + loop ─────────────────────────
 const locked = () => document.pointerLockElement === canvas;
 // ───────────────────────── online 1v1 (WebRTC, peer to peer) ─────────────────────────
-const PROTO = 6;
+const PROTO = 7;
 const PEER_LIB = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';   // only loaded when you go online
 const LOCAL_NET = new URLSearchParams(location.search).get('net') === 'local';   // two tabs on one computer, for testing
 // the parts of a fighter the other side needs in order to draw them
@@ -4894,7 +4940,7 @@ function onNet(m) {
   else if (m.t === 'topple') {
     const b = buildings[m.i | 0];
     if (b) {
-      dropTower(b, num(m.cut, 0, b.ny - 1) | 0, !!m.alongX, m.sign > 0 ? 1 : -1, true);
+      dropTower(b, num(m.cut, 0, b.ny - 1) | 0, !!m.alongX, m.sign > 0 ? 1 : -1, true, num(m.diag, 0, 7) | 0);
       say('TOWER FALLING!', 1.6); sfx(1, 300, 1.2);
     }
   }
