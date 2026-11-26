@@ -326,7 +326,7 @@ const cam = { yaw: .7, pitch: -.05, dist: 10, shake: 0, fov: 70, pos: [0, 5, -10
 const P = {};
 function resetPlayer() {
   Object.assign(P, { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: .7, grounded: true, wall: null,
-    charge: -1, airJumps: 1, dashes: 2, dash: 0, dashDir: [0,0,1], act: null, cm: null, leapCharge: -1, leaping: false, rushCd: 0, cds: {}, sun: 100, heat: 0, heatT: 0, empower: 0, vent: 0, burn: null, stunT: 0, ccGuard: 0, parryCd: 0, juggle: 0, cuts: 2, ammo: 12, gun: 0, scope: false, reload: 0, burst: 0, burstT: 0, pumpCd: 0, padCd: 0, trapCd: 0, netCd: 0, flashCd: 0, ricCd: 0, rollCd: 0, pad: null, trap: null, blindT: 0, ultLock: 0, cooled: true, held: null, flying: false, beam: null, swings: 0, hp: 100, iframe: 0, hurtT: 0, style: 0, zipT: 0, atkBuf: 0, hold: 0, cross: null, crossUsed: false, spin: null, chainHits: 0, lastHit: -9, storm: null, meteor: null, guill: null, kick: null, orbit: null, wire: null,
+    charge: -1, airJumps: 1, dashes: 2, dash: 0, dashDir: [0,0,1], act: null, cm: null, leapCharge: -1, leaping: false, rushCd: 0, cds: {}, sun: 100, heat: 0, heatT: 0, empower: 0, vent: 0, burn: null, stunT: 0, ccGuard: 0, parryCd: 0, juggle: 0, cuts: 2, ammo: 12, gun: 0, scope: false, reload: 0, burst: 0, burstT: 0, pumpCd: 0, padCd: 0, trapCd: 0, netCd: 0, flashCd: 0, ricCd: 0, rollCd: 0, pad: null, trap: null, blindT: 0, ultLock: 0, cooled: true, held: null, flying: false, beam: null, swings: 0, hp: 100, iframe: 0, hurtT: 0, style: 0, zipT: 0, atkBuf: 0, hold: 0, cross: null, crossUsed: false, spin: null, chainHits: 0, lastHit: -9, storm: null, meteor: null, guill: null, kick: null, orbit: null,
     reelBlock: null, whirl: null, carving: null, wasCarving: false, carveY: undefined, slashSide: 1, glide: false, dive: false, peak: 0,
     punch: 0, cool: 0, phase: 0, holding: null, coyote: 0, wallLock: 0, spaceAir: 0,
     h: 2, slide: false, slideCd: 0, shield: 0, calm: 0, mantle: null, jumpBuf: 0, landT: 1, airPress: false, px: 0, py: 0, pz: 0, chain: null, lash: null, reel: null, slashT: 0 });
@@ -564,7 +564,18 @@ const ULT_LOCK = 5;                       // an ultimate's own hits do not recha
 function chargeUlt(share) {
   if (!(P.ultLock > 0)) P.style = Math.min(100, P.style + share * ULT_PER_DAMAGE * (ROSTER[who].ultRate || 1) * (perk('surge') ? 1.3 : 1));
 }
-const spendUlt = () => { P.style = 0; P.ultLock = ULT_LOCK; };
+const spendUlt = () => { P.style = 0; P.ultLock = ULT_LOCK; P.ultLeft = ULT_CAP; };
+// online an ultimate takes at most ULT_CAP % of their health bar, however many of its blows land
+const ULT_CAP = 60;
+function ultHit(dmg) {
+  if (!pvp) return damageEnemy(dmg);
+  if (E.dead || E.inv > 0 || truce.t > 0) return;
+  const per = netDeal(who) * heatBoost() * damagePerk() * ROSTER[foe].armor * 400 / (ROSTER[foe].netHp || ROSTER[foe].hp);
+  const pct = Math.min(dmg * per, P.ultLeft ?? ULT_CAP);
+  if (pct <= 0) return;
+  P.ultLeft = (P.ultLeft ?? ULT_CAP) - pct;
+  damageEnemy(pct / per);
+}
 function style(move, pts = 8) {
   const last = history[history.length - 1];
   history.push({ move, at: clock });
@@ -740,21 +751,6 @@ function startOrbit() {
   P.orbit = { b: best, cx, cz, r: Math.max(best.nx, best.nz) * V * .72 + 2, a: Math.atan2(P.x - cx, P.z - cz), y: height, cd: 0, p: [cx, height, cz] };
   P.wall = null; style('orbit', 16); sfx(.3, 1400, .2);
 }
-function tripwire() {
-  const look = lookDir(), w = P.wire;
-  if (w && w.b) {                                           // third press: rip both ends out
-    for (const p of [w.a, w.b]) carve(...p, 7, 22);
-    const d = w.b.map((v, i) => v - w.a[i]), n = Math.ceil(Math.hypot(...d) / 2.5);
-    for (let i = 1; i < n; i++) carve(w.a[0] + d[0] * i / n, w.a[1] + d[1] * i / n, w.a[2] + d[2] * i / n, 2.3, 12);
-    P.wire = null; act('yank', .45); jolt(1, .08); style('tripwire', 18); sfx(1, 700, .6);
-    return;
-  }
-  const r = raycast(aimOrigin(look), look, 100);
-  if (!r) return say('NOTHING TO ANCHOR TO', .8);
-  if (!w) { P.wire = { a: r.p, b: null, life: 20, cool: .5 }; say('FIRST END SET', .9); }
-  else { w.b = r.p; w.life = 20; say('WIRE TAUT: Z TO RIP', 1.4); style('tripwire', 10); }
-  P.punch = .18; P.yaw = cam.yaw; act('throw', .22); sfx(.3, 2200, .15);
-}
 
 // reel a block in, whirl it, let it go
 function grabBlock() {
@@ -905,20 +901,6 @@ function updateMoves(dt) {
     if (w.t > .3 && (w.cd -= dt) <= 0) { w.cd = .05; if (carve(...whirlPos(), 2.6, 18)) cam.shake = Math.max(cam.shake, .3); }
     if (!keys.has('KeyG')) throwBlock(Math.min(w.t, 1.5) / 1.5);
   }
-
-  const wire = P.wire;
-  if (wire) {
-    wire.cool -= dt;
-    if ((wire.life -= dt) <= 0 || !hitPoint(...wire.a, .8) || (wire.b && !hitPoint(...wire.b, .8))) P.wire = null;
-    else if (wire.b && wire.cool <= 0) {                    // run or fall into the wire to be flung from it
-      const d = wire.b.map((v, i) => v - wire.a[i]), p = [P.x - wire.a[0], P.y + 1 - wire.a[1], P.z - wire.a[2]];
-      const t = clamp(dot(p, d) / (dot(d, d) || 1), 0, 1);
-      if (Math.hypot(p[0] - d[0] * t, p[1] - d[1] * t, p[2] - d[2] * t) < 2.4) {
-        P.vx = Math.sin(cam.yaw) * 55; P.vz = Math.cos(cam.yaw) * 55; P.vy = 38; P.grounded = false; P.coyote = 0;
-        P.airJumps = 1; P.dashes = maxDashes(); wire.cool = 1.2; jolt(.5); style('slingshot', 16); sfx(.7, 1500, .3);
-      }
-    }
-  }
 }
 
 // moves that drive the body. Returns true while one is in charge of velocity.
@@ -934,7 +916,7 @@ function specialMove(dt, wx, wz, crouchKey) {
       st.cd = .07;
       const c = sphereCentre();
       byEnemy = true; carve(...c, st.r, 34); byEnemy = false;   // one solid sphere; the enemy is handled below
-      if (!st.hit && enemyNear(st.r + 1)) { st.hit = true; E.inv = 0; damageEnemy(160); }
+      if (!st.hit && enemyNear(st.r + 1)) { st.hit = true; E.inv = 0; ultHit(160); }
       if (!st.scorched && st.r > 18) { st.scorched = true; addCrater(P.x, P.z, 15); }
       for (let i = 0; i < 14; i++) {                        // grit thrown off the surface
         const a = rr(0, 6.28), e = Math.asin(rr(-1, 1)), x = c[0] + Math.cos(e) * Math.sin(a) * st.r, y = c[1] + Math.sin(e) * st.r, z = c[2] + Math.cos(e) * Math.cos(a) * st.r;
@@ -1277,7 +1259,7 @@ function horizonCut(x, y, z, yaw, mine) {
   }
   for (let d = 4; d < HORIZON_REACH; d += 4) dust(x + fx * d, y, z + fz * d, 7, 12);
   if (mine) {
-    if (!E.dead && onHorizon(E.x, E.z, x, z, yaw, 3.5 + Math.max(0, pad(foe))) && Math.abs(E.y - y) < 8) { E.guard = 0; E.inv = 0; damageEnemy(150); }
+    if (!E.dead && onHorizon(E.x, E.z, x, z, yaw, 3.5 + Math.max(0, pad(foe))) && Math.abs(E.y - y) < 8) { E.guard = 0; E.inv = 0; ultHit(150); }
   } else if (onHorizon(P.x, P.z, x, z, yaw, 3.5 + Math.max(0, pad(who))) && Math.abs(P.y - y) < 8) { P.iframe = 0; hurtPlayer(34, x, z, 26); }
   cam.shake = 1.6; hitStop = .12; sfx(1, 2000, .6); sfx(1, 260, 1.1);
 }
@@ -1371,7 +1353,7 @@ function shootyGadgets(planted) {
   };
   if (pressed.has('KeyG')) thrownGadget('netCd', 5, 'NET', (from, d) => fire(from, d, 'net', 55, .9));
   if (pressed.has('KeyZ')) thrownGadget('flashCd', 7, 'FLASH', (from, d) => fire(from, d, 'flash', 48, clamp(Math.hypot(...sub(aimPoint(60).p, from)) / 48, .08, .8)));
-  if (pressed.has('KeyX')) thrownGadget('ricCd', 4, 'RICOCHET', (from, d) => fire(from, d, 'ric', 150, 1.4, { dmg: 22, bounces: 1 }));
+  if (pressed.has('KeyX')) thrownGadget('ricCd', 4, 'RICOCHET', (from, d) => fire(from, d, 'ric', 150, 1.4, { dmg: 22, bounces: RIC_BOUNCES }));
 }
 // from the planted gun: no damage at all, but whoever is close is blown a long way off
 function gunPulse() {
@@ -1448,11 +1430,17 @@ function headshot(w, dir) {
   return t > -1 && t < 4 && Math.hypot(h[0] - dir[0] * t, h[1] - dir[1] * t, h[2] - dir[2] * t) < .25 + .18 * ROSTER[foe].size;
 }
 
+// Ricochet: up to two bounces, and each bounce sends it straight at where they are right then
+const RIC_BOUNCES = 2;
+function aimAt(w, target) {
+  const d = [target[0] - w.p[0], target[1] - w.p[1], target[2] - w.p[2]], l = Math.hypot(...d) || 1, s = Math.hypot(...w.v);
+  w.v = d.map(v => v / l * s);
+}
 // one projectile of hers (or the computer's copy of her) for one frame; true once it is spent
 function stepBolt(w, dt) {
+  const target = w.mine ? (E.dead ? null : [E.x, E.y + 1.5, E.z, pad(foe)]) : [P.x, P.y + 1.1, P.z, pad(who)];
   const len = Math.hypot(...w.v) * dt, dir = w.v.map(v => v * dt / (len || 1));
   const wall = raycast(w.p, dir, len), steps = Math.max(1, Math.ceil(len / 1));
-  const target = w.mine ? (E.dead ? null : [E.x, E.y + 1.5, E.z, pad(foe)]) : [P.x, P.y + 1.1, P.z, pad(who)];
   let struck = false;
   for (let i = 1; target && i <= steps && !struck && w.kind !== 'pellet'; i++) {
     const k = len * i / steps;
@@ -1505,8 +1493,10 @@ function stepBolt(w, dt) {
       let flip = 1;
       for (const a of [0, 2, 1]) { const back = wall.p.slice(); back[a] -= dir[a] * .6; if (!buildingAt(back) || back[1] < .1) { flip = a; break; } }
       if (wall.p[1] < .6) flip = 1;
-      w.v[flip] *= -1; w.yaw = Math.atan2(w.v[0], w.v[2]); w.bounced = true;
-      for (let a = 0; a < 3; a++) w.p[a] += w.v[a] / BULLET * 1.2;
+      w.v[flip] *= -1; w.bounced = true;
+      for (let a = 0; a < 3; a++) w.p[a] += w.v[a] / BULLET * 1.2;   // step off the wall, then turn on them
+      if (target) { aimAt(w, target); w.life = Math.max(w.life, 1); }
+      w.yaw = Math.atan2(w.v[0], w.v[2]);
       sfx(.6, 3400, .12);
       return false;
     }
@@ -1548,7 +1538,7 @@ function shellBurst(w, direct) {
   if (w.mine) {
     byEnemy = true; carve(x, y, z, blastRadius() < SHELL_BLAST ? 7 : 13, 40); byEnemy = false;
     if (pvp) netSend({ t: 'boom', x, y, z, r: blastRadius() });
-    if (!E.dead && (direct || Math.hypot(E.x - x, E.y + 1.5 - y, E.z - z) < blastRadius() + pad(foe))) { E.guard = 0; E.inv = 0; damageEnemy(CANNON_DMG); if (!E.dead) Object.assign(E, { vy: 22, stun: .6 }); }
+    if (!E.dead && (direct || Math.hypot(E.x - x, E.y + 1.5 - y, E.z - z) < blastRadius() + pad(foe))) { E.guard = 0; E.inv = 0; ultHit(CANNON_DMG); if (!E.dead) Object.assign(E, { vy: 22, stun: .6 }); }
   } else {
     wreck(x, y, z, 13, 40);
     if (direct || Math.hypot(P.x - x, P.y + 1.1 - y, P.z - z) < SHELL_BLAST + pad(who)) { P.iframe = 0; hurtPlayer(32, x, z, 30); }
@@ -1764,7 +1754,7 @@ function ragdoll(m, dt, done, smash) {
   Object.assign(E, { x, y, z, px: x, py: y, pz: z, vx: 0, vy: 0, vz: 0, yaw: P.yaw, swing, stun: .3, flung: false, state: 'idle', cd: 1 });
   if (u >= 1) {
     const ix = P.x + fx * side * 5.5, iz = P.z + fz * side * 5.5;
-    E.inv = 0; damageEnemy(28);
+    E.inv = 0; ultHit(28);
     smash(ix, P.y + .8, iz, 4.6, 26);
     if (P.y < 1.5) addCrater(ix, iz, 4.5);
     dust(ix, P.y, iz, 40, 20); jolt(1.2, .09); sfx(1, 300, .5);
@@ -2032,7 +2022,7 @@ function bruteMove(dt) {
       const r = 9 + m.rings * 8; m.rings++;
       smash(P.x, P.y + 1, P.z, 7, 30);
       for (let i = 0; i < 16; i++) { const a = i / 16 * 6.283, x = P.x + Math.sin(a) * r, z = P.z + Math.cos(a) * r; smash(x, P.y + 2, z, 4.5, 30); if (i % 2) dust(x, P.y, z, 8, 10); }
-      bite(r + 5, 70); jolt(1.5, .1); sfx(1, 220, .8);
+      if (enemyNear(r + 5)) { E.inv = 0; ultHit(70); } jolt(1.5, .1); sfx(1, 220, .8);
     }
     if (m.t > 1.35) done();
     return true;
@@ -2059,7 +2049,8 @@ function drawBrutePlayer(time) {
     push(P.x + Math.sin(a) * r, P.y + 2.4 + Math.sin(i * 2.4) * 1.2, P.z + Math.cos(a) * r, 3, .18, .18, .18, a, AMBER); }
 }
 
-const SUN_FLY = 3, SUN_BOOST = 4, SUN_GAZE = 9, SUN_REFILL = 45, SUN_MIN = 25;
+const GAZE_WIDTH = 2.6;                    // a forgiving stare: her damage comes from keeping it on them
+const SUN_FLY = 3, SUN_BOOST = 4, SUN_GAZE = 5, SUN_REFILL = 45, SUN_MIN = 25;
 function stepSun(dt) {
   const gazing = P.cm?.name === 'beam';
   const drain = perk('cells') ? .65 : 1;
@@ -2202,7 +2193,7 @@ function haloMove(dt) {
     m.hurt -= dt;
     if (m.hurt <= 0 && !E.dead) {
       const p = sub([E.x, E.y + 1.5, E.z], eyes), k = clamp(dot(p, u), 0, Math.hypot(...sub(to, eyes)) + 2);
-      if (Math.hypot(p[0] - u[0] * k, p[1] - u[1] * k, p[2] - u[2] * k) < 2 + pad(foe)) { m.hurt = .12; E.inv = 0; damageEnemy(6.6); }
+      if (Math.hypot(p[0] - u[0] * k, p[1] - u[1] * k, p[2] - u[2] * k) < GAZE_WIDTH + pad(foe)) { m.hurt = .22; E.inv = 0; damageEnemy(12); }
     }
     if (!keys.has('mouse2') || m.t > 3) done();
     if (P.flying) { brake(4); return true; }
@@ -2253,17 +2244,17 @@ function haloMove(dt) {
     m.r = Math.min(24, 4 + Math.max(0, m.t - .25) * 24);
     if (m.t > .25 && (m.tick -= dt) <= 0) {
       m.tick = .08; smash(P.x, P.y + 1.4, P.z, m.r, 36); jolt(1, .02); sfx(.8, 900, .15);
-      if (!m.hit && enemyNear(m.r + 1)) { m.hit = true; E.inv = 0; damageEnemy(160); }
+      if (!m.hit && enemyNear(m.r + 1)) { m.hit = true; E.inv = 0; ultHit(160); }
     }
     if (m.t > .25) {
       const was = m.low ?? P.y + 1.4;
       m.low = Math.max(0, was - FLARE_FALL * dt);
       for (let y = was - 7; y >= m.low; y -= 7) smash(P.x, y, P.z, 8, 30);
-      if (!m.hit && !E.dead && E.y < P.y && E.y + 3 > m.low && Math.hypot(E.x - P.x, E.z - P.z) < m.wide + pad(foe)) { m.hit = true; E.inv = 0; damageEnemy(160); }
+      if (!m.hit && !E.dead && E.y < P.y && E.y + 3 > m.low && Math.hypot(E.x - P.x, E.z - P.z) < m.wide + pad(foe)) { m.hit = true; E.inv = 0; ultHit(160); }
       if (m.low === 0 && !m.landed) {
         m.landed = m.t;
         smash(P.x, 2, P.z, 18, 40); addCrater(P.x, P.z, 18); dust(P.x, 0, P.z, 90, 45); jolt(2, .1); sfx(1, 220, 1.4);
-        if (!m.hit && !E.dead && E.y < 12 && Math.hypot(E.x - P.x, E.z - P.z) < 22 + pad(foe)) { m.hit = true; E.inv = 0; damageEnemy(160); }
+        if (!m.hit && !E.dead && E.y < 12 && Math.hypot(E.x - P.x, E.z - P.z) < 22 + pad(foe)) { m.hit = true; E.inv = 0; ultHit(160); }
       }
     }
     if (m.t > 1.35 && m.landed && m.t > m.landed + .5 || m.t > 3) done();
@@ -2395,7 +2386,7 @@ function drawHaloPlayer(time) {
 // Optional cooldowns, in seconds, for each special move (Options, Cooldowns). Online the host's choice counts for both.
 // Moves with timers of their own (Bull Rush, Parry, SHOOTYGAL's gadgets) keep them, and lose them when this is off.
 const COOLDOWNS = {
-  hero:   { KeyF: 4, KeyG: 6, KeyT: 10, KeyZ: 8, KeyX: 8 },
+  hero:   { KeyF: 4, KeyG: 6, KeyT: 10, KeyX: 8 },
   cinder: { mouse2: 2, KeyF: 5, KeyG: 3, KeyT: 4, KeyZ: 2 },
   brute:  { KeyF: 8, KeyG: 6, KeyT: 5, KeyZ: 6, KeyX: 4 },
   halo:   { mouse2: 3, KeyF: 6, KeyG: 6, KeyT: 5, KeyZ: 7 },
@@ -2404,7 +2395,7 @@ const COOLDOWNS = {
 };
 const cooldownsOn = () => pvp ? !!pvp.cooldowns : !!settings.cooldowns;
 // anything a move can set going; if one of these changed, the move started
-const busyWith = () => [P.cm, P.cross, P.spin, P.meteor, P.storm, P.orbit, P.wire, P.held, P.kick, P.guill, P.chain, P.reel, P.lash, P.pad, P.trap, P.beam, waves.length];
+const busyWith = () => [P.cm, P.cross, P.spin, P.meteor, P.storm, P.orbit, P.held, P.kick, P.guill, P.chain, P.reel, P.lash, P.pad, P.trap, P.beam, waves.length];
 function actions() {
   const cds = cooldownsOn() ? COOLDOWNS[who] : null;
   if (!cds) return fighterActions();
@@ -2465,7 +2456,6 @@ function fighterActions() {
     if (P.holding) P.whirl = { t: 0, a: cam.yaw, cd: 0 };     // hold to spin, release to throw
     else if (!P.reelBlock) grabBlock();
   }
-  if (pressed.has('KeyZ') && !busy) tripwire();
   if (pressed.has('KeyX') && !busy) startOrbit();
   if (pressed.has('KeyT') && !busy) topple();
   if (pressed.has('KeyQ') && !busy) startStorm();
@@ -2533,7 +2523,7 @@ function stepPlayer(dt) {
   P.cool -= dt; P.rushCd -= dt; P.parryCd -= dt;
   for (const k in P.cds) P.cds[k] -= dt;
   P.ccGuard -= dt;
-  if (!cooldownsOn()) P.rushCd = P.parryCd = P.padCd = P.trapCd = P.netCd = P.flashCd = P.ricCd = P.rollCd = 0;
+  if (!cooldownsOn()) P.rushCd = P.parryCd = P.padCd = P.trapCd = P.netCd = P.flashCd = P.rollCd = 0;   // Ricochet always finds them, so it keeps its 4 s
   P.pumpCd -= dt; P.padCd -= dt; P.trapCd -= dt; P.netCd -= dt; P.flashCd -= dt; P.ricCd -= dt; P.rollCd -= dt; P.blindT -= dt;
   if (who === 'shoot') stepGadgets(dt);
   stepPerks(dt);
@@ -2827,19 +2817,19 @@ let who = 'hero', foe = 'cinder';          // fighter you control, fighter you f
 // one table drives the select screen, the help panel, the HUD and the rival's AI
 // stats: power / speed / reach / toughness out of 5. moves: [action, name, what it does]
 const ROSTER = {
-  hero: { name: 'CHAINBOI', role: 'Kusarigama drifter', stats: [3, 5, 5, 2], speed: 1.18, jump: 1, armor: .78, power: 1.52, hp: 1100, netHp: 1060, size: .8, deal: 1.65, camH: 2.65, camD: 6, tempo: 1.12,
+  hero: { name: 'CHAINBOI', role: 'Kusarigama drifter', stats: [3, 5, 5, 2], speed: 1.18, jump: 1, armor: .78, power: 1.52, hp: 1100, netHp: 1060, size: .8, deal: 1.65, netDeal: 1.26, camH: 2.65, camD: 6, tempo: 1.12,
     desc: 'A masked wanderer who lives off the ground. The sickle flies out on its chain to cut, hook and swing; the claw ball is the counterweight. Fragile, but nobody moves across the city like this.',
     moves: [['mouse0', 'Sickle combo', 'Three cuts or throws, and the fourth click is a spinning Cyclone'], ['mouse0', 'Crossfall (hold)', 'Swipe, swipe, then an overhead slam'],
       ['mouse2', 'Chain (hold)', 'Hooks what you aim at: swing from anything overhead'],
       ['KeyR', 'Reel in', 'While hooked: go to the ground or a car or wall; people are dragged to you'], ['KeyF', 'Ground pound / Meteor Drop', 'In the air, hurls the ball down and follows it'],
       ['KeyG', 'Reel-In / Wrecking Ball', 'Yank out a block, then hold to whirl and throw'], ['KeyT', 'Topple', 'Pull over a tower with a damaged base. Huge damage if it lands on the rival'],
-      ['KeyZ', 'Tripwire', 'Set two ends, press again to rip them out'], ['KeyX', 'Orbit (hold)', 'Circle a standing tower you are close to, slicing it'], ['KeyQ', 'Reaper Sphere', 'Ultimate: a full sphere of blades']] },
-  cinder: { name: 'FIREBOI', role: 'Twin-blade ember knight', stats: [4, 4, 3, 3], speed: 1.1, jump: 1, armor: .76, power: 1.9, hp: 1200, netHp: 1100, size: 1, deal: 1.45, camH: 4.3, camD: 10, tempo: 1.05,
+      ['KeyX', 'Orbit (hold)', 'Circle a standing tower you are close to, slicing it'], ['KeyQ', 'Reaper Sphere', 'Ultimate: a full sphere of blades']] },
+  cinder: { name: 'FIREBOI', role: 'Twin-blade ember knight', stats: [4, 4, 3, 3], speed: 1.1, jump: 1, armor: .76, power: 1.9, hp: 1200, netHp: 1100, size: 1, deal: 1.45, netDeal: .87, camH: 4.3, camD: 10, tempo: 1.05,
     desc: 'A horned knight in charred plate with a molten blade in each hand. Hits build heat. When the blades are white hot the next special erupts, then they need a moment to cool.',
     moves: [['mouse0', 'Twin Fangs', 'Three-cut combo'], ['mouse0', 'Fire Wheel (hold)', 'Spinning blades; you can still move'], ['mouse2', 'Ember Dash', 'Cut straight through anything'],
       ['KeyF', 'Comet Cleave', 'Leap and crash down on your aim'], ['KeyG', 'Cross Flare', 'A burning X that slices buildings'], ['KeyT', 'Phoenix Rise', 'Uppercut that launches'],
       ['KeyZ', 'Flicker', 'Blink a short way where you aim'], ['KeyQ', 'Ember Rain', 'Ultimate: blades fall from the sky']] },
-  brute: { name: 'TANKBOI', role: 'Colossal beast', stats: [3, 1, 2, 5], speed: .8, jump: 1, dashes: 1, ultRate: .8, armor: .48, power: 1.55, hp: 1800, netHp: 1200, size: 1.9, deal: .82, cool: .6, camH: 4.8, camD: 11, tempo: .75,
+  brute: { name: 'TANKBOI', role: 'Colossal beast', stats: [3, 1, 2, 5], speed: .8, jump: 1, dashes: 1, ultRate: .8, armor: .38, power: 1.55, hp: 1800, netHp: 950, size: 1.9, deal: .82, netDeal: .67, cool: .6, camH: 4.8, camD: 11, tempo: .75,
     desc: 'A hulking beast on all fours, with iron gauntlets and an armoured tail. Slower than the rest and a far bigger target, but soaks up more punishment than anyone and resists being knocked around. Outlasts rather than out-damages.',
     moves: [['mouse0', 'Hammer Fists', 'Very fast alternating left and right'], ['mouse0', 'Tail Whack (hold)', 'Charge, release: a full turn that catches anyone around him; longer hits harder'], ['mouse2', 'Bull Rush / Stampede (hold)', 'Barely hurts, but leaves them stunned. Hold to carry them a short way. Cannot climb. 7 s cooldown with cooldowns on'],
       ['Space', 'Titan Leap (hold)', 'Tap to hop; charge and release to soar. The landing cracks the ground'],
@@ -2847,19 +2837,19 @@ const ROSTER = {
       ['KeyZ', 'Titan Kick (hold)', 'Charge and release: a front kick that launches'],
       ['KeyX', 'Brace (hold)', 'Blocks most damage from the front while you creep. Let go right after a hit to counter with the tail'],
       ['KeyQ', 'Cataclysm / Ragdoll', 'Ultimate. While holding the rival: swing and slam them again and again']] },
-  halo: { name: 'LIGHTBOI', role: 'Sun-powered combat drone', stats: [3, 5, 4, 2], speed: 1.15, jump: 1, armor: 1.05, power: 1.55, hp: 1050, netHp: 1300, size: .9, deal: 1.15, cool: .3, camH: 3.1, camD: 7.5, tempo: 1.1,
+  halo: { name: 'LIGHTBOI', role: 'Sun-powered combat drone', stats: [3, 5, 4, 2], speed: 1.15, jump: 1, armor: 1.05, power: 1.55, hp: 1050, netHp: 1300, size: .9, deal: 1.15, netDeal: 1.7, cool: .3, camH: 3.1, camD: 7.5, tempo: 1.1,
     desc: 'A flying machine that drinks sunlight and shrugs off gravity, but flight and the stare spend it; stand still on something to refill. Fights from any height, burns lines through towers with a stare, and can carry almost anything into the sky before letting go.',
     moves: [['Space', 'Flight', 'Take off; in the air you fly where you look. Jump rises, crouch descends'], ['ShiftLeft', 'Boost', 'Hold while flying to tear through buildings'],
       ['mouse0', 'Solar Strikes', 'Alternating punches'], ['mouse0', 'Comet Punch (hold)', 'Charge, release and fly through them'], ['mouse2', 'Sun Gaze (hold)', 'Twin beams that cut what you look at'],
       ['KeyF', 'Skyfall', 'Dive onto your aim'], ['KeyG', 'Grab / Throw', 'Carry the rival, a car, a bystander or rubble'], ['KeyT', 'Gale', 'A blast of wind that scatters everything ahead'],
       ['KeyZ', 'Sonic Burst', 'Shockwave all around you'], ['KeyQ', 'Solar Flare', 'Ultimate: erupt like a small sun, with a pillar of light that reaches the ground from any height']] },
-  slash: { name: 'SLASHYGAL', role: 'Greatsword duelist', stats: [5, 3, 4, 4], speed: 1.02, jump: 1, armor: .62, power: 1.85, hp: 1350, netHp: 920, size: .9, deal: 1.95, camH: 3.1, camD: 8, tempo: .92,
+  slash: { name: 'SLASHYGAL', role: 'Greatsword duelist', stats: [5, 3, 4, 4], speed: 1.02, jump: 1, armor: .62, power: 1.85, hp: 1350, netHp: 920, size: .9, deal: 1.95, netDeal: 1.5, camH: 3.1, camD: 8, tempo: .92,
     desc: 'A white-haired swordfighter dragging a blade taller than she is. Few swings, long reach, heavy hits. Miss one and she is wide open.',
     moves: [['mouse0', 'Heavy Cuts', 'Three wide slashes, each a step forward'], ['mouse0', 'Piercing Stab (hold)', 'A thrust that drives them far away'],
       ['mouse2', 'Air Dash Cut', 'Slice along your aim; a hit gives the dash back'], ['KeyC', 'Blade Surf', 'Slide on the sword; hold against a wall to ride down it'],
       ['KeyF', 'Skysplitter', 'One long downward slash. Right after a Rising Cut lands, it homes in'], ['KeyG', 'Sword Wave', 'A flying crescent; walls stop it'], ['KeyT', 'Rising Cut', 'Launch them into the air'],
       ['KeyZ', 'Parry', 'A split second that turns any hit back. 1.5 s cooldown with cooldowns on'], ['KeyQ', 'Horizon Cut', 'Ultimate: aim the warning line with the mouse. The sky darkens and a diagonal cut slices a tower apart']] },
-  shoot: { name: 'SHOOTYGAL', role: 'Mercenary gunslinger', stats: [4, 5, 5, 2], speed: 1.22, jump: 1.05, armor: 1.05, power: 1.45, hp: 1100, netHp: 990, size: .8, deal: 1.1, camH: 3, camD: 7, tempo: 1.05,
+  shoot: { name: 'SHOOTYGAL', role: 'Mercenary gunslinger', stats: [4, 5, 5, 2], speed: 1.22, jump: 1.05, armor: .88, power: 1.45, hp: 1100, netHp: 990, size: .8, deal: 1.1, netDeal: 1.32, camH: 3, camD: 7, tempo: 1.05,
     desc: 'The quickest on her feet, with a scoped rifle, a shotgun and a bag of tricks. Wants room to aim; hates being grabbed hold of up close. Twelve rounds, then she reloads.',
     moves: [['mouse0', 'Fire', 'Rifle: one precise round. Shotgun: brutal up close, weak at range'], ['mouse0', 'Triple burst (hold)', 'Rifle only: three quick rounds'], ['mouse2', 'Scope (hold)', 'Rifle only: zoom in and walk'], ['KeyV', 'Switch weapon', 'Rifle or shotgun'],
       ['KeyT', 'Jump pad', 'Launches whoever steps on it'], ['KeyF', 'Trip mine', 'Arms itself, then throws them into the air'], ['KeyG', 'Net', 'Shoves them back; stops a charge dead'],
@@ -2875,6 +2865,9 @@ const LABELS = {
   halo: { combo: 'SOLAR STRIKES', wave: 'SUN LANCE', dash: 'COMET PUNCH', leap: 'SKYFALL', sphere: 'SOLAR FLARE', clap: 'GALE', blink: 'VANISH' },
 };
 const moveLabel = m => LABELS[foe][m] || MOVES[m].label;
+// online, damage and health use their own numbers (netDeal, netHp), tuned for player against player.
+// netHp keeps each role (the tank is slowest to bring down, the fragile three fastest); netDeal evens the matchups
+const netDeal = k => ROSTER[k].netDeal || ROSTER[k].deal || 1;
 const pad = k => ROSTER[k].size - .9;             // how much wider than average a fighter's hitbox is
 let rain = [];                            // falling blades, from either side
 let waves = [], fighting = false;
@@ -2915,15 +2908,19 @@ function buildHeat(dmg) {
   if (P.heat === 100) say('BLADES WHITE HOT', .8);
   if (P.heat >= 50 && !E.dead) P.burn = { x: E.x, y: E.y, z: E.z, t: 3, tick: .5 };
 }
+// online, how soon the next hit may land after this one: her rifle rounds almost at once, FIREBOI's close-up
+// flurries quickly (he is relentless once he is on you), everything else after HIT_GAP
+const HIT_GAP = .22, RIFLE_GAP = .03, FLURRY_GAP = .1, FLURRY = new Set(['combo', 'whirl', 'dash']);
+const hitGapKind = dmg => who === 'shoot' && dmg <= RIFLE_DMG * 2 ? 1 : who === 'cinder' && FLURRY.has(P.cm?.name) ? 2 : 0;
 // everything the player does goes through carve(), so that is also what hurts him
 function damageEnemy(dmg) {
   if (E.dead || E.inv > 0 || truce.t > 0) return;
   if (pvp) {
     E.inv = .14; E.hurtT = .18;
-    const sent = dmg * (ROSTER[who].deal || 1) * heatBoost() * damagePerk();
+    const sent = dmg * netDeal(who) * heatBoost() * damagePerk();
     if (perk('thirst')) P.hp = Math.min(100, P.hp + .2 * sent * ROSTER[foe].armor * 400 / (ROSTER[foe].netHp || ROSTER[foe].hp));
     buildHeat(dmg);
-    netSend({ t: 'hit', d: sent, x: P.x, z: P.z, r: who === 'shoot' && dmg <= RIFLE_DMG * 2 ? 1 : 0 });
+    netSend({ t: 'hit', d: sent, x: P.x, z: P.z, r: hitGapKind(dmg) });
     chargeUlt(sent * ROSTER[foe].armor * 400 / (ROSTER[foe].netHp || ROSTER[foe].hp));
     for (let i = 0; i < 10; i++) debris(E.x, E.y + 1.6, E.z, rr(.1, .28), [1, .5, .15], rr(-14, 14), rr(0, 14), rr(-14, 14), rr(.2, .6));
     hitStop = Math.max(hitStop, .02); sfx(.6, 1800, .12);
@@ -3108,7 +3105,7 @@ function stepShots(dt) {
     rain.splice(i, 1);
     if (d.mine) {
       byEnemy = true; carve(d.x, d.floor + 1, d.z, 4.5, 22); byEnemy = false;
-      if (!E.dead && Math.hypot(E.x - d.x, E.y - d.floor, E.z - d.z) < 6) { E.inv = 0; damageEnemy(40); }
+      if (!E.dead && Math.hypot(E.x - d.x, E.y - d.floor, E.z - d.z) < 6) { E.inv = 0; ultHit(40); }
     } else {
       wreck(d.x, d.floor + 1, d.z, 3.8, 20);
       if (Math.hypot(P.x - d.x, P.y - d.floor, P.z - d.z) < 4.2 + pad(who)) hurtPlayer(13, d.x, d.z, 14);
@@ -4722,11 +4719,6 @@ function buildScene(time) {
     const p = spinTip(t), q = spinTip(t + .018), d = sub(q, p), l = Math.hypot(...d);
     if (l > .1) push((p[0] + q[0]) / 2, p[1], (p[2] + q[2]) / 2, 3, .3 * (1 - i / 16), .3 * (1 - i / 16), l, Math.atan2(d[0], d[2]), GLOW);
   }
-  const wire = P.wire;
-  if (wire) {
-    drawBall(wire.a, 0);
-    if (wire.b) { drawLinks(wire.a, wire.b, 0, Math.max(.9, Math.hypot(...sub(wire.b, wire.a)) / 70), .18); drawBall(wire.b, 0); }
-  }
   drawEnemy(time, drawAlpha);
   drawEnemyEffects(time);
   for (const t of thrown) push(t.p[0], t.p[1], t.p[2], 0, 2.6, 2.2, 2.6, t.spin * .7, t.color, t.spin);
@@ -5107,12 +5099,12 @@ function render(dt, time, alpha = 1) {
 // ───────────────────────── events + loop ─────────────────────────
 const locked = () => document.pointerLockElement === canvas;
 // ───────────────────────── online 1v1 (WebRTC, peer to peer) ─────────────────────────
-const PROTO = 11;
+const PROTO = 12;
 const PEER_LIB = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';   // only loaded when you go online
 const LOCAL_NET = new URLSearchParams(location.search).get('net') === 'local';   // two tabs on one computer, for testing
 // the parts of a fighter the other side needs in order to draw them
 const SHARED = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'yaw', 'phase', 'grounded', 'h', 'wall', 'charge', 'glide', 'dive', 'dash', 'slide', 'mantle', 'kick', 'meteor', 'orbit',
-  'chain', 'storm', 'cross', 'guill', 'whirl', 'act', 'punch', 'slashT', 'slashSide', 'carving', 'holding', 'lash', 'reel', 'spin', 'cm', 'leapCharge', 'leaping', 'flying', 'beam', 'wire', 'reelBlock', 'hurtT', 'style', 'hp', 'pad', 'trap', 'gun', 'shield'];
+  'chain', 'storm', 'cross', 'guill', 'whirl', 'act', 'punch', 'slashT', 'slashSide', 'carving', 'holding', 'lash', 'reel', 'spin', 'cm', 'leapCharge', 'leaping', 'flying', 'beam', 'reelBlock', 'hurtT', 'style', 'hp', 'pad', 'trap', 'gun', 'shield'];
 let link = null, netStatus = '', joinCode = '';
 function setStatus(text) { netStatus = text; const el = $('netstatus'); if (el) el.textContent = text; }
 const netSend = msg => { try { link?.send(msg); } catch {} };
@@ -5270,7 +5262,7 @@ function onNet(m) {
     const loss = num(m.d, 0, 220) * ROSTER[who].armor * 400 / (ROSTER[who].netHp || ROSTER[who].hp);
     if (pvp.pin) P.iframe = 0;                              // no dodging while they have hold of me
     rawDamage = true;
-    if (hurtPlayer(loss, num(m.x, -400, 400), num(m.z, -400, 400), 14) && pvp) P.iframe = Math.min(P.iframe, m.r ? .03 : .22);   // fast combos still land
+    if (hurtPlayer(loss, num(m.x, -400, 400), num(m.z, -400, 400), 14) && pvp) P.iframe = Math.min(P.iframe, m.r === 1 ? RIFLE_GAP : m.r === 2 ? FLURRY_GAP : HIT_GAP);   // fast combos still land
     rawDamage = false;
   } else if (m.t === 'stun') { if (truce.t <= 0 && !(P.ccGuard > 0)) { P.stunT = num(m.d, 0, 1); P.ccGuard = P.stunT + CC_GUARD; say('STUNNED', .7); } }
   else if (m.t === 'crush') {                                // a tower came down on me
@@ -5342,7 +5334,7 @@ function showThrows(list) {
 
 // 3. call out the big moves, so there is a moment to get out of the way
 const CALLS = {
-  hero: { cross: 'CROSSFALL', meteor: 'METEOR DROP', storm: 'REAPER SPHERE', wire: 'TRIPWIRE', whirl: 'WRECKING BALL', orbit: 'ORBIT', spin: 'CYCLONE' },
+  hero: { cross: 'CROSSFALL', meteor: 'METEOR DROP', storm: 'REAPER SPHERE', whirl: 'WRECKING BALL', orbit: 'ORBIT', spin: 'CYCLONE' },
   cinder: { whirl: 'FIRE WHEEL', dash: 'EMBER DASH', leap: 'COMET CLEAVE', wave: 'CROSS FLARE', rise: 'PHOENIX RISE', rain: 'EMBER RAIN' },
   brute: { brace: 'BRACE', charge: 'TAIL WHACK', dash: 'BULL RUSH', rip: 'LANDSLIDE', slam: 'LANDSLIDE', clap: 'THUNDERCLAP', kickwind: 'TITAN KICK', quake: 'CATACLYSM', ragdoll: 'RAGDOLL' },
   halo: { charge: 'COMET PUNCH', beam: 'SUN GAZE', dive: 'SKYFALL', gale: 'GALE', boom: 'SONIC BURST', flare: 'SOLAR FLARE' },
