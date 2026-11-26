@@ -193,6 +193,7 @@ function dust(x, y, z, n, speed) {
 let byEnemy = false;
 // Remove every voxel within radius r of (x,y,z). Returns number removed.
 function carve(x, y, z, r, push = 14) {
+  if (truce.t > 0) return 0;                       // a truce spares the city too
   if (fxLog) return quietly(() => carve(x, y, z, r, push));
   let removed = 0;
   if (!byEnemy) strikeEnemy(x, y, z, r);
@@ -316,7 +317,7 @@ const cam = { yaw: .7, pitch: -.05, dist: 10, shake: 0, fov: 70, pos: [0, 5, -10
 const P = {};
 function resetPlayer() {
   Object.assign(P, { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: .7, grounded: true, wall: null,
-    charge: -1, airJumps: 1, dashes: 2, dash: 0, dashDir: [0,0,1], act: null, cm: null, leapCharge: -1, leaping: false, rushCd: 0, stunT: 0, ultLock: 0, cooled: true, held: null, flying: false, beam: null, swings: 0, hp: 100, iframe: 0, hurtT: 0, style: 0, zipT: 0, atkBuf: 0, hold: 0, cross: null, crossUsed: false, spin: null, chainHits: 0, lastHit: -9, storm: null, meteor: null, guill: null, kick: null, orbit: null, wire: null,
+    charge: -1, airJumps: 1, dashes: 2, dash: 0, dashDir: [0,0,1], act: null, cm: null, leapCharge: -1, leaping: false, rushCd: 0, stunT: 0, parryCd: 0, cuts: 2, ultLock: 0, cooled: true, held: null, flying: false, beam: null, swings: 0, hp: 100, iframe: 0, hurtT: 0, style: 0, zipT: 0, atkBuf: 0, hold: 0, cross: null, crossUsed: false, spin: null, chainHits: 0, lastHit: -9, storm: null, meteor: null, guill: null, kick: null, orbit: null, wire: null,
     reelBlock: null, whirl: null, carving: null, wasCarving: false, carveY: undefined, slashSide: 1, glide: false, dive: false, apex: 0,
     punch: 0, cool: 0, phase: 0, holding: null, coyote: 0, wallLock: 0, spaceAir: 0,
     h: 2, slide: false, slideCd: 0, mantle: null, jumpBuf: 0, landT: 1, airPress: false, px: 0, py: 0, pz: 0, chain: null, lash: null, reel: null, slashT: 0 });
@@ -328,7 +329,7 @@ const blockedAt = (x, y, z, h = P.h) => hit(x - W, y, z - W, x + W, y + h, z + W
 const thrown = [];
 const craters = new Float32Array(16 * 4);
 let craterHead = 0;
-function addCrater(x, z, r) { if (fxLog) noteFx('c', x, z, r); craters.set([x, z, r, 1], craterHead * 4); craterHead = (craterHead + 1) % 16; }
+function addCrater(x, z, r) { if (truce.t > 0) return; if (fxLog) noteFx('c', x, z, r); craters.set([x, z, r, 1], craterHead * 4); craterHead = (craterHead + 1) % 16; }
 
 // move along one axis; on contact, bisect up to the surface
 function moveAxis(axis, d) {
@@ -773,6 +774,7 @@ function throwBlock(charge) {
 // ── topple: the part of a weakened tower above its thinnest floor tips over as one piece ──
 let fallers = [];
 function topple() {
+  if (truce.t > 0) return say('NOT DURING THE TRUCE', .8);
   const look = lookDir();
   const p = P.chain?.attached ? P.chain.a : raycast(aimOrigin(look), look, 110)?.p;
   const b = p && buildingAt(p);
@@ -793,6 +795,7 @@ function topple() {
 }
 // everything above floor "cut" becomes one rigid falling piece. show = someone else toppled it
 function dropTower(b, cut, alongX, sign, show) {
+  if (truce.t > 0) return;
   const { nx, ny, nz } = b, layer = nx * ny;
   const vox = b.vox = b.vox || new Uint8Array(nx * ny * nz).fill(1);
   const parts = [];
@@ -819,7 +822,7 @@ function fallerPoint(f, q) {          // where a block of a tipping tower is now
 const TOPPLE_DAMAGE = 260;
 // one heavy hit per falling tower, if any part of it is on top of the rival
 function crush(f, reach) {
-  if (f.crushed || E.dead) return;
+  if (f.crushed || E.dead || truce.t > 0) return;
   const under = f.parts.some(q => { const p = fallerPoint(f, q); return Math.abs(p[1] - E.y - 1.5) < reach + 1 && Math.hypot(p[0] - E.x, p[2] - E.z) < reach + pad(foe); });
   if (!under) return;
   f.crushed = true;
@@ -1065,8 +1068,156 @@ function cinderActions(look) {
   }
 }
 
+// ───────── SLASHYGAL: one enormous sword, few heavy swings ─────────
+// Only her ultimate can bring a building down; everything else just nicks it.
+const PARRY_TIME = .35, PARRY_COOLDOWN = 3, HORIZON_WIND = .9, HORIZON_REACH = 60;
+function slashActions(look) {
+  const m = P.cm, free = (!m || m.name === 'combo' && m.t > .22) && P.cool <= 0;
+  if (P.grounded) P.cuts = 2;
+  if (pressed.has('mouse0')) { P.atkBuf = .2; P.hold = 0; }
+  P.atkBuf -= STEP;
+  P.hold = keys.has('mouse0') ? P.hold + STEP : 0;
+  if (!keys.has('mouse0')) P.crossUsed = false;
+  if (P.atkBuf > 0 && free) {
+    P.atkBuf = 0;
+    P.swings = m?.name === 'combo' || clock - P.lastHit < .8 ? (P.swings + 1) % 3 : 0;
+    P.lastHit = clock;
+    startCm('combo', { n: P.swings, aim: aimYaw() }); style('slash', 5); sfx(.5, 700, .16);
+  }
+  if (P.hold > .26 && !P.crossUsed && (!m || m.name === 'combo')) { P.crossUsed = true; startCm('charge', { power: 0 }); say('DRAW SLASH', .8); }
+  if (pressed.has('mouse2') && free && P.cuts > 0) {
+    P.cuts--; startCm('dash', { d: look.slice(), hit: false }); style('dash', 8); sfx(.7, 1300, .25);
+  }
+  if (pressed.has('KeyE') && P.dashes > 0 && !P.dash) {
+    P.cm = null; P.dashes--; P.dash = .16; P.wall = null; P.yaw = cam.yaw;
+    const y = P.grounded ? Math.max(0, look[1]) : look[1], l = Math.hypot(look[0], y, look[2]);
+    P.dashDir = [look[0] / l, y / l, look[2] / l]; style('dash', 5); sfx(.35, 1100, .25);
+  }
+  if (pressed.has('KeyF') && free) {
+    if (P.grounded) { P.vy = 30; P.grounded = false; P.coyote = 0; }
+    P.wall = null; startCm('split', { aim: aimYaw(), last: 1e9 }); style('meteor', 14); say('SKYSPLITTER', .8);
+  }
+  if (pressed.has('KeyG') && free) { startCm('wave', { done: false }); style('reel', 8); sfx(.8, 1000, .35); }
+  if (pressed.has('KeyT') && free) { startCm('rise', { hit: false, aim: aimYaw() }); P.vy = 30; P.grounded = false; style('kick', 12); say('RISING CUT', .8); }
+  if (pressed.has('KeyZ') && !P.cm) {
+    if (P.parryCd > 0) say('PARRY IN ' + Math.ceil(P.parryCd) + 's', .6);
+    else { P.parryCd = PARRY_COOLDOWN; startCm('parry'); sfx(.5, 2400, .15); }
+  }
+  if (pressed.has('KeyQ') && P.cm?.name !== 'horizon') {
+    if (P.style < 100) say('STYLE ' + (P.style | 0) + '%', .7);
+    else { spendUlt(); startCm('horizon', { aim: cam.yaw, done: false }); say('HORIZON CUT', 1.6); sfx(1, 2600, .9); }
+  }
+}
+function slashMove(dt) {
+  // blade surf: ride the sword down a wall instead of falling past it
+  if (!P.grounded && P.vy < -8 && keys.has('KeyC') && adjacentWall(1.4)) {
+    P.vy = -8; if (Math.random() < dt * 40) debris(P.x, P.y, P.z, rr(.12, .25), [1, .8, .4], rr(-6, 6), rr(0, 6), rr(-6, 6), rr(.2, .5));
+  }
+  const m = P.cm;
+  if (!m) return false;
+  m.t += dt;
+  const done = () => { if (P.cm === m) P.cm = null; };
+  const cut = (d, up, r, push = 18) => { byEnemy = true; const n = carve(P.x + Math.sin(P.yaw) * d, P.y + up, P.z + Math.cos(P.yaw) * d, r, push); byEnemy = false; if (n) cam.shake = Math.max(cam.shake, .35); };
+  const bite = (r, dmg) => { if (!enemyNear(r) || !facingEnemy()) return false; E.inv = 0; damageEnemy(dmg); return true; };
+  if (m.name === 'combo') {                                  // wide, heavy, each one a step forward
+    P.yaw = m.aim; P.punch = .1;
+    const big = m.n === 2;
+    if (!m.done && m.t > .12) { m.done = true; cut(4, 1.6, big ? 2.8 : 2.2); bite(big ? 8 : 7, big ? 28 : 16); dust(P.x + Math.sin(P.yaw) * 4, P.y, P.z + Math.cos(P.yaw) * 4, big ? 14 : 5, 8); jolt(big ? .6 : .25, big ? .05 : .02); }
+    if (m.t > .05 && m.t < .14 && P.grounded && !enemyNear(3)) { P.vx = Math.sin(P.yaw) * 16; P.vz = Math.cos(P.yaw) * 16; }
+    if (m.t > (big ? .42 : .3)) { if (big) P.cool = .2; done(); }
+    return false;
+  }
+  if (m.name === 'charge') {
+    P.yaw = cam.yaw; m.power = Math.min(1, m.t / .8); P.vx *= 1 - 6 * dt; P.vz *= 1 - 6 * dt;
+    if (!keys.has('mouse0')) { P.cm = { name: 'draw', t: 0, power: m.power, spin: 0, cd: 0 }; sfx(1, 1500, .3); }
+    return false;
+  }
+  if (m.name === 'draw') {                                   // one very fast long cut
+    P.punch = .1;
+    if (!m.done) {
+      m.done = true;
+      for (let d = 4; d <= 6 + m.power * 8; d += 4) cut(d, 1.6, 2.4);
+      if (bite(9 + m.power * 8, 30 + m.power * 42) && !E.dead) Object.assign(E, { vx: Math.sin(P.yaw) * 40, vz: Math.cos(P.yaw) * 40, vy: 14, stun: .5 });
+      jolt(.9, .08);
+    }
+    P.vx = Math.sin(P.yaw) * 30 * Math.max(0, 1 - m.t / .18); P.vz = Math.cos(P.yaw) * 30 * Math.max(0, 1 - m.t / .18);
+    if (m.t > .5) { P.cool = .15; done(); }                   // slow to recover if it misses
+    return false;
+  }
+  if (m.name === 'dash') {                                   // cut along the aim; a hit gives the dash back
+    const d = m.d, v = 68;
+    P.vx = d[0] * v; P.vy = d[1] * v; P.vz = d[2] * v; P.yaw = Math.atan2(d[0], d[2]);
+    cut(2.5, 1.4 + d[1] * 2.5, 1.8, 12);
+    if (!m.hit && bite(5.5, 22)) { m.hit = true; P.cuts = Math.min(2, P.cuts + 1); jolt(.4, .04); }
+    if (m.t > .24) { P.vx *= .3; P.vy *= .25; P.vz *= .3; P.cool = m.hit ? 0 : .25; done(); }
+    return true;
+  }
+  if (m.name === 'split') {                                  // blade first, all the way down, like a guillotine
+    P.yaw = m.aim; P.punch = .1;
+    if (m.t < .2) return false;
+    P.vy = -52; P.vx = Math.sin(P.yaw) * 8; P.vz = Math.cos(P.yaw) * 8;
+    if (m.last - P.y > 2.2) { m.last = P.y; cut(2.6, 2, 1.8, 16); }   // a narrow groove down whatever is in front
+    if (P.grounded || m.t > 3) {
+      cut(4, 1, 3, 22); bite(8, 40); dust(P.x + Math.sin(P.yaw) * 4, P.y, P.z + Math.cos(P.yaw) * 4, 34, 18);
+      if (P.y < 1.5) addCrater(P.x + Math.sin(P.yaw) * 4, P.z + Math.cos(P.yaw) * 4, 4);
+      jolt(1, .08); sfx(1, 350, .6); P.vy = 0; P.cool = .3; done();
+    }
+    return true;
+  }
+  if (m.name === 'wave') {
+    P.punch = .1;
+    if (!m.done && m.t > .16) {
+      m.done = true;
+      const from = [P.x, P.y + 1.8, P.z], d = sub(aimPoint(110).p, from), l = Math.hypot(...d) || 1;
+      waves.push({ p: from, v: d.map(v => v / l * 62), yaw: Math.atan2(d[0], d[2]), life: 1.1, cd: 0, mine: true, hit: false, kind: 'arc' });
+    }
+    if (m.t > .4) { P.cool = .5; done(); }
+    return false;
+  }
+  if (m.name === 'rise') {
+    P.yaw = m.aim; P.punch = .1; P.vx = Math.sin(P.yaw) * 14; P.vz = Math.cos(P.yaw) * 14;
+    if (!m.hit) { cut(3, 2 + m.t * 6, 2); if (bite(6.5, 22) && !E.dead) { m.hit = true; Object.assign(E, { vx: Math.sin(P.yaw) * 6, vz: Math.cos(P.yaw) * 6, vy: 32, stun: .8 }); } }
+    if (m.t > .4) { P.cuts = 2; P.airJumps = 1; done(); }
+    return false;
+  }
+  if (m.name === 'parry') { P.vx *= 1 - 10 * dt; P.vz *= 1 - 10 * dt; P.yaw = cam.yaw; if (m.t > .5) done(); return false; }
+  if (m.name === 'horizon') {                                // a line on the ground, a pause, then the cut
+    P.yaw = m.aim; P.punch = .1; P.vx *= 1 - 10 * dt; P.vz *= 1 - 10 * dt; P.vy = Math.max(P.vy, -4);
+    if (!m.done && m.t > HORIZON_WIND) { m.done = true; horizonCut(P.x, P.y, P.z, P.yaw, true); }
+    if (m.t > HORIZON_WIND + .6) done();
+    return false;
+  }
+  if (m.t > .3) done();
+  return false;
+}
+// is a point inside the strip that Horizon Cut slices?
+function onHorizon(px, pz, x, z, yaw, half) {
+  const dx = px - x, dz = pz - z, f = dx * Math.sin(yaw) + dz * Math.cos(yaw);
+  return f > -1 && f < HORIZON_REACH && Math.abs(dx * Math.cos(yaw) - dz * Math.sin(yaw)) < half;
+}
+// the one blow that takes towers apart: the first two it crosses slide off their bases
+function horizonCut(x, y, z, yaw, mine) {
+  const fx = Math.sin(yaw), fz = Math.cos(yaw), done = new Set();
+  for (let d = 4; d < HORIZON_REACH && done.size < 2; d += 2.5) {
+    const b = buildingAt([x + fx * d, 4.5, z + fz * d]);
+    if (!b || done.has(b)) continue;
+    done.add(b);
+    const alongX = Math.abs(fx) > Math.abs(fz), sign = Math.sign(alongX ? fx : fz) || 1;
+    dropTower(b, 1, alongX, sign, false);
+    const falling = fallers[fallers.length - 1];
+    if (falling) falling.crushed = true;              // the cut already did its damage; no second hit
+    if (pvp && mine) netSend({ t: 'topple', i: buildings.indexOf(b), cut: 1, alongX, sign });
+  }
+  for (let d = 4; d < HORIZON_REACH; d += 4) dust(x + fx * d, y, z + fz * d, 7, 12);
+  if (mine) {
+    if (!E.dead && onHorizon(E.x, E.z, x, z, yaw, 3.5 + Math.max(0, pad(foe))) && Math.abs(E.y - y) < 8) { E.guard = 0; E.inv = 0; damageEnemy(150); }
+  } else if (onHorizon(P.x, P.z, x, z, yaw, 3.5 + Math.max(0, pad(who))) && Math.abs(P.y - y) < 8) { P.iframe = 0; hurtPlayer(34, x, z, 26); }
+  cam.shake = 1.6; hitStop = .12; sfx(1, 2000, .6); sfx(1, 260, 1.1);
+}
+
 // timers, blade hits and movement for the knight. Returns true when it drives velocity
 function cinderMove(dt) {
+  if (who === 'slash') return slashMove(dt);
   if (who === 'brute') return bruteMove(dt);
   if (who === 'halo') return haloMove(dt);
   const m = P.cm;
@@ -1162,7 +1313,7 @@ function grab(look) {
   let car = nearest(cars, 9), civ = nearest(civs, 7.5);
   // whichever is closer to hand
   if (car && civ) { if (Math.hypot(civ.x - P.x, civ.z - P.z) < Math.hypot(car.x - P.x, car.z - P.z)) car = null; else civ = null; }
-  if (enemyNear(8) && facingEnemy(cam.yaw, 1.1)) {
+  if (truce.t <= 0 && enemyNear(8) && facingEnemy(cam.yaw, 1.1)) {
     P.held = { type: 'rival', t: 0 }; E.awake = true; E.inv = 0; damageEnemy(10); say('GOT ' + ROSTER[foe].name, .9);
   } else if (car) { car.held = true; car.wreck = 0; car.flung = false; P.held = { type: 'car', o: car, t: 0 }; }
   else if (civ) { civ.held = true; civ.down = 0; civ.flung = false; P.held = { type: 'civ', o: civ, t: 0 }; }
@@ -1780,9 +1931,11 @@ function drawHaloPlayer(time) {
 }
 
 function actions() {
+  if (truce.t > 0) pressed.delete('KeyQ');
   const look = lookDir();
   if (who === 'brute') return bruteActions(look);
   if (who === 'halo') return haloActions(look);
+  if (who === 'slash') return slashActions(look);
   if (who === 'cinder') return cinderActions(look);
   const busy = P.storm || P.meteor || P.guill || P.kick || P.cross;
   // attack: instant, buffered; keep holding for CROSSFALL
@@ -1888,7 +2041,7 @@ function stepPlayer(dt) {
   const sprint = keys.has('ShiftLeft') || keys.has('ShiftRight');
   const space = keys.has('Space'), crouchKey = keys.has('KeyC');
 
-  P.cool -= dt; P.rushCd -= dt; P.slashT -= dt; P.punch -= dt; P.wallLock -= dt; P.coyote -= dt; P.slideCd -= dt; P.jumpBuf -= dt;
+  P.cool -= dt; P.rushCd -= dt; P.parryCd -= dt; P.slashT -= dt; P.punch -= dt; P.wallLock -= dt; P.coyote -= dt; P.slideCd -= dt; P.jumpBuf -= dt;
   if (pressed.has('Space')) P.jumpBuf = .13;               // pressed slightly early still counts
   if (P.mantle) { stepMantle(dt); pressed.clear(); released.clear(); return; }
   if (P.grounded) { P.coyote = .12; P.airJumps = 1; P.dashes = ROSTER[who].dashes || 2; P.glide = false; P.airPress = false; P.landT += dt; }
@@ -1973,7 +2126,7 @@ function stepPlayer(dt) {
     hs = Math.hypot(P.vx, P.vz);
     if (P.slide && !jumped) {
       if (wl) steer(wx, wz, 1.4, dt);
-      setSpeed(Math.max(0, hs - 13 * dt));
+      setSpeed(Math.max(0, hs - (who === 'slash' ? 3 : 13) * dt));
     } else if (P.grounded && !jumped) {
       if (wl && hs > top + .5) {                           // carried momentum bleeds off gently
         steer(wx, wz, 9, dt);
@@ -2072,6 +2225,7 @@ function stepThrown(dt) {
 }
 
 function step(dt) {
+  stepTruce(dt);
   P.px = P.x; P.py = P.y; P.pz = P.z;   // for render interpolation
   fxLog = pvp ? pvp.fx : null;                              // note my particles for the opponent
   stepPlayer(dt);
@@ -2084,6 +2238,26 @@ function step(dt) {
 // ───────────────────────── FIREBOI: the dual-sword rival ─────────────────────────
 const E = { max: 900 };
 let pvp = null;                           // the online match, when there is one
+const TRUCE = 5;
+const truce = { t: 0, over: false };      // over: the round has just been won, as opposed to about to start
+const startTruce = over => Object.assign(truce, { t: TRUCE, over });
+function stepTruce(dt) {
+  if (!(truce.t > 0)) return;
+  E.cd = Math.max(E.cd || 0, .6);          // the computer holds its attacks
+  const left = Math.ceil(truce.t);
+  truce.t -= dt;
+  if (truce.t > 0) { if (popup.t <= .1 || Math.ceil(truce.t) !== left) say((truce.over ? 'NEXT ROUND IN ' : 'FIGHT IN ') + Math.ceil(truce.t), .3); return; }
+  truce.t = 0;
+  if (truce.over) newRound();
+  else { say('FIGHT!', 1); sfx(1, 1400, .4); }
+}
+// a fresh city, both fighters back at their marks, and the countdown to the next fight
+function newRound() {
+  resetWorld(); waves = []; rain = []; flames = []; slides = []; rubble = [];
+  if (!pvp) return void startTruce(false);
+  pvp.carves.length = pvp.fx.length = 0; pvp.theirThrows.clear(); pvp.throwing = false; pvp.pin = null;
+  pvpSpawn();                                             // starts the countdown itself
+}
 let remoteCarve = false, remoteDrawing = false, rawDamage = false;
 let who = 'hero', foe = 'cinder';          // fighter you control, fighter you face
 // one table drives the select screen, the help panel, the HUD and the rival's AI
@@ -2114,11 +2288,18 @@ const ROSTER = {
       ['mouse0', 'Solar Strikes', 'Alternating punches'], ['mouse0', 'Comet Punch (hold)', 'Charge, release and fly through them'], ['mouse2', 'Sun Gaze (hold)', 'Twin beams that cut what you look at'],
       ['KeyF', 'Skyfall', 'Dive onto your aim'], ['KeyG', 'Grab / Throw', 'Carry the rival, a car, a bystander or rubble'], ['KeyT', 'Gale', 'A blast of wind that scatters everything ahead'],
       ['KeyZ', 'Sonic Burst', 'Shockwave all around you'], ['KeyQ', 'Solar Flare', 'Ultimate: erupt like a small sun']] },
+  slash: { name: 'SLASHYGAL', role: 'Greatsword duelist', stats: [4, 3, 4, 3], speed: 1.02, jump: 1, armor: .82, power: 1.35, hp: 1180, size: .9, deal: 1.22, camH: 3.1, camD: 8, tempo: .92,
+    desc: 'A white-haired swordfighter dragging a blade taller than she is. Few swings, long reach, heavy hits. Miss one and she is wide open.',
+    moves: [['mouse0', 'Heavy Cuts', 'Three wide slashes, each a step forward'], ['mouse0', 'Draw Slash (hold)', 'Charge, then one very fast long cut'],
+      ['mouse2', 'Air Dash Cut', 'Slice along your aim; a hit gives the dash back'], ['KeyC', 'Blade Surf', 'Slide on the sword; hold against a wall to ride down it'],
+      ['KeyF', 'Skysplitter', 'One long downward slash, from a hop or from height'], ['KeyG', 'Sword Wave', 'A flying crescent; walls stop it'], ['KeyT', 'Rising Cut', 'Launch them into the air'],
+      ['KeyZ', 'Parry', 'A split second that turns any hit back. 3 s cooldown'], ['KeyQ', 'Horizon Cut', 'Ultimate: a warning line, a pause, then towers along it slide apart']] },
 };
 const LABELS = {
   hero: { combo: 'SICKLE FLURRY', wave: 'SICKLE THROW', dash: 'CHAIN RUSH', cross: 'CROSSFALL', leap: 'METEOR DROP', sphere: 'REAPER SPHERE', blink: 'VANISH' },
   brute: { combo: 'HAMMER FISTS', dash: 'BULL RUSH', wave: 'BOULDER TOSS', clap: 'THUNDERCLAP', leap: 'SKYFALL CRUSH', quake: 'CATACLYSM', blink: 'SIDESTEP' },
   cinder: {},
+  slash: { combo: 'HEAVY CUTS', wave: 'SWORD WAVE', dash: 'AIR DASH CUT', leap: 'SKYSPLITTER', rise: 'RISING CUT' },
   halo: { combo: 'SOLAR STRIKES', wave: 'SUN LANCE', dash: 'COMET PUNCH', leap: 'SKYFALL', sphere: 'SOLAR FLARE', clap: 'GALE', blink: 'VANISH' },
 };
 const moveLabel = m => LABELS[foe][m] || MOVES[m].label;
@@ -2127,6 +2308,7 @@ const TRIM = {                                    // TRIM[you][rival]: gentle pe
   cinder: { hero: 1.16, cinder: 1.18, brute: .95,  halo: 1.07 },
   brute:  { hero: 1.29, cinder: 1.24, brute: .95,  halo: 1.14 },
   halo:   { hero: .95,  cinder: 1.02, brute: 1.01, halo: 1.14 },
+  slash:  { hero: 1,    cinder: 1,    brute: 1,    halo: 1 },
 };
 const trim = () => TRIM[who]?.[foe] || 1;
 const pad = k => ROSTER[k].size - .9;             // how much wider than average a fighter's hitbox is
@@ -2155,12 +2337,13 @@ const MOVES = {
   cross:  { wind: .3,  act: .7,  rest: .55, label: 'CROSSFALL' },
   sphere: { wind: .8,  act: 1.0, rest: 1.0, label: 'SPHERE' },
   clap:   { wind: .45, act: .25, rest: .55, label: 'THUNDERCLAP' },
+  horizon: { wind: 1.0, act: .3, rest: 1.0, label: 'HORIZON CUT' },
   quake:  { wind: .6,  act: 1.3, rest: .9,  label: 'QUAKE' },
 };
 
 // everything the player does goes through carve(), so that is also what hurts him
 function damageEnemy(dmg) {
-  if (E.dead || E.inv > 0) return;
+  if (E.dead || E.inv > 0 || truce.t > 0) return;
   if (pvp) {
     E.inv = .14; E.hurtT = .18;
     const sent = dmg * (ROSTER[who].deal || 1);
@@ -2195,7 +2378,7 @@ function damageEnemy(dmg) {
   }
   if (!E.enraged && E.hp < E.max / 2) { E.enraged = true; say(foeName() + ' IGNITES', 1.8); dust(E.x, E.y, E.z, 50, 22); cam.shake = 1; sfx(1, 700, .8); }
   if (E.hp <= 0) {
-    E.hp = 0; E.dead = true; waves = []; say(foeName() + ' DEFEATED  ·  Esc for rematch', 4);
+    E.hp = 0; E.dead = true; waves = []; say(foeName() + ' DEFEATED', 4); startTruce(true); popup.t = 1.5;
     for (let i = 0; i < 90; i++) debris(E.x + rr(-1, 1), E.y + rr(0, 3), E.z + rr(-1, 1), rr(.2, .9), i % 3 ? [.12, .1, .1] : [1, .45, .1], rr(-18, 18), rr(2, 26), rr(-18, 18), rr(1.5, 4));
     cam.shake = 1.6; hitStop = .2; sfx(1, 300, 1.4);
   }
@@ -2210,7 +2393,14 @@ function strikeEnemy(x, y, z, r) {
 function wreck(x, y, z, r, push = 18) { byEnemy = true; const n = carve(x, y, z, r, push); byEnemy = false; return n; }
 
 function hurtPlayer(dmg, fx, fz, knock = 18) {
-  if (debug || P.iframe > 0 || P.dash > 0 || P.kick || P.storm || P.cm?.name === 'dash') return false;   // dashing dodges
+  if (truce.t > 0 || debug || P.iframe > 0 || P.dash > 0 || P.kick || P.storm || P.cm?.name === 'dash') return false;   // dashing dodges
+  if (who === 'slash' && P.cm?.name === 'parry' && P.cm.t < PARRY_TIME) {
+    const dx = E.x - P.x, dz = E.z - P.z, d = Math.hypot(dx, dz) || 1;
+    if (d < 12 && !E.dead) Object.assign(E, { vx: dx / d * 36, vz: dz / d * 36, vy: 14, stun: .8 });
+    P.iframe = .4; say('PARRY!', .9); jolt(.8, .09); sfx(1, 3000, .3);
+    for (let i = 0; i < 16; i++) debris(P.x, P.y + 1.6, P.z, rr(.1, .2), [1, .9, .6], rr(-16, 16), rr(2, 16), rr(-16, 16), rr(.15, .4));
+    return false;
+  }
   P.hp -= rawDamage ? dmg : dmg * ROSTER[foe].power * ROSTER[who].armor * trim(); P.iframe = .55; P.hurtT = .35;
   const dx = P.x - fx, dz = P.z - fz, d = Math.hypot(dx, dz) || 1;
   const steady = who === 'brute';
@@ -2219,9 +2409,8 @@ function hurtPlayer(dmg, fx, fz, knock = 18) {
   P.vx = dx / d * knock; P.vz = dz / d * knock; P.vy = Math.max(P.vy, steady ? 4 : 11); P.grounded = false;
   cam.shake = Math.max(cam.shake, .9); hitStop = Math.max(hitStop, .07); sfx(.9, 500, .25);
   if (P.hp <= 0 && pvp) { pvpDown(); return true; }
-  if (P.hp <= 0) {                                          // back to the plaza; the city keeps its scars
-    Object.assign(P, { x: 0, y: 0, z: 0, px: 0, py: 0, pz: 0, vx: 0, vy: 0, vz: 0, hp: 100, holding: null, held: null, flying: false, iframe: 1.5 });
-    resetEnemy(); say('YOU FELL', 2);
+  if (P.hp <= 0) {                                          // round over
+    P.hp = 1; say('YOU FELL', 2); startTruce(true); popup.t = 1.5;
   }
   return true;
 }
@@ -2235,6 +2424,7 @@ function chooseMove() {
     cinder: [['leap', 'wave', 'blink', 'wave'], ['combo', 'combo', 'rise', 'whirl', 'leap'], ['dash', 'dash', 'whirl', 'wave', 'leap', 'blink'], ['wave', 'leap', 'blink', 'dash', 'blink'], ['rain', 'rain']],
     hero:   [['leap', 'wave', 'dash'], ['combo', 'combo', 'cross', 'leap'], ['dash', 'wave', 'cross', 'wave', 'leap'], ['wave', 'dash', 'leap'], ['sphere', 'sphere']],
     brute:  [['leap', 'wave', 'leap'], ['combo', 'combo', 'combo', 'clap', 'leap'], ['dash', 'dash', 'clap', 'wave', 'leap'], ['dash', 'wave', 'leap', 'dash'], ['quake', 'quake']],
+    slash:  [['leap', 'wave', 'dash'], ['combo', 'combo', 'combo', 'rise'], ['dash', 'dash', 'wave', 'leap'], ['wave', 'dash', 'leap'], ['horizon']],
     halo:   [['wave', 'dash', 'leap'], ['combo', 'combo', 'combo', 'clap', 'dash'], ['dash', 'wave', 'wave', 'leap', 'clap'], ['wave', 'dash', 'leap', 'blink'], ['sphere', 'sphere']],
   };
   const pool = [...POOLS[foe][band], ...(E.enraged ? POOLS[foe][4] : [])];
@@ -2251,7 +2441,7 @@ function fireWave(spread) {
   const from = [E.x, E.y + 1.8, E.z], lead = Math.min(.6, Math.hypot(P.x - E.x, P.z - E.z) / 62) * .8;
   const d = [P.x + P.vx * lead - from[0], P.y + 1 - from[1], P.z + P.vz * lead - from[2]], l = Math.hypot(...d) || 1;
   const a = Math.atan2(d[0], d[2]) + spread, flat = Math.hypot(d[0], d[2]) / l;
-  waves.push({ p: from, v: [Math.sin(a) * flat * 62, d[1] / l * 62, Math.cos(a) * flat * 62], yaw: a, life: 1.7, cd: 0, mine: false, hit: false, kind: foe === 'hero' ? 'sickle' : foe === 'brute' ? 'rock' : foe === 'halo' ? 'beam' : 'x' });
+  waves.push({ p: from, v: [Math.sin(a) * flat * 62, d[1] / l * 62, Math.cos(a) * flat * 62], yaw: a, life: 1.7, cd: 0, mine: false, hit: false, kind: foe === 'hero' ? 'sickle' : foe === 'brute' ? 'rock' : foe === 'halo' ? 'beam' : foe === 'slash' ? 'arc' : 'x' });
 }
 
 // blades that drop on marked spots
@@ -2280,6 +2470,20 @@ function stepShots(dt) {
       }
       if (!waves.length) return;
       if ((w.life -= dt) <= 0) waves.splice(i, 1);
+      continue;
+    }
+    if (w.kind === 'arc') {
+      if (buildingAt(w.p)) {                                  // a notch in the wall, and it is spent
+        if (w.mine) { byEnemy = true; carve(...w.p, 2, 14); byEnemy = false; } else wreck(...w.p, 2, 14);
+        waves.splice(i, 1); continue;
+      }
+      disturb(w.p[0], w.p[1], w.p[2], 2.5);                  // cars and people in the way
+      const reach = w.mine ? !w.hit && !E.dead && Math.hypot(E.x - w.p[0], E.y + 1.6 - w.p[1], E.z - w.p[2]) < 3 + pad(foe)
+        : Math.hypot(P.x - w.p[0], P.y + 1 - w.p[1], P.z - w.p[2]) < 2.6 + pad(who);
+      if (reach && w.mine) { w.hit = true; E.inv = 0; damageEnemy(24); }
+      if (reach && !w.mine) hurtPlayer(13, w.p[0] - w.v[0], w.p[2] - w.v[2], 20);
+      if (!waves.length) return;
+      if ((w.life -= dt) <= 0 || reach || w.p[1] < .3) waves.splice(i, 1);
       continue;
     }
     if (w.kind === undefined || w.kind === 'x') for (let n = 0; n < 2; n++)
@@ -2399,6 +2603,9 @@ function activeMove(dt) {
       if (hurtPlayer(12, E.x, E.z, 5)) { P.vy = 34; P.iframe = .45; }
       wreck(E.x + Math.sin(E.yaw) * 3, E.y + 3, E.z + Math.cos(E.yaw) * 3, 3);
     }
+  } else if (E.move === 'horizon') {
+    E.vx = E.vz = 0;
+    if (!E.hits) { E.hits = 1; horizonCut(E.x, E.y, E.z, E.yaw, false); }
   } else if (E.move === 'rain') {
     E.vx = E.vz = 0;
     if (!E.hits) { E.hits = 1; callRain(P.x, P.y, P.z, 11, false, P.vx, P.vz); sfx(.8, 700, .6); }
@@ -2472,7 +2679,7 @@ function stepEnemy(dt) {
     if ((E.cd -= dt * quick) <= 0) startMove(chooseMove());
   } else if (E.state === 'wind') {
     E.vx *= 1 - 8 * dt; E.vz *= 1 - 8 * dt;
-    if (E.move !== 'dash' || E.t < m.wind * .7 / quick) {    // aim locks just before he goes
+    if (E.move !== 'dash' && E.move !== 'horizon' || E.t < m.wind * (E.move === 'dash' ? .7 : .45) / quick) {    // aim locks just before he goes
       faceXZ(P.x, P.z);
       const d = [P.x - E.x, P.y - E.y, P.z - E.z], n = Math.hypot(...d) || 1;
       E.dir = d.map(v => v / n); E.target = [P.x, P.y, P.z];
@@ -2656,7 +2863,112 @@ function drawKnight(K, time, ex, ey, ez, pal) {
     push(ex + Math.sin(a) * 1.7, ey + 1 + (time * 2 + i * .55) % 3, ez + Math.cos(a) * 1.7, 3, .14, .14, .14, a, EMBER, a);
   }
 }
+const GALCOAT = [.13, .11, .17], GALRED = [.82, .07, .2], GALHAIR = [.93, .9, .96], GALSKIN = [.85, .62, .48], BLADE = [.78, .82, .88], EDGE = [.95, .98, 1], HILT = [.2, .16, .14];
+// a box stretched from a to b
+function beamBox(a, b, w, h, col, mat = 0) {
+  const d = sub(b, a), l = Math.hypot(...d) || 1;
+  push((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2, mat, w, h, l, Math.atan2(d[0], d[2]), col, -Math.asin(clamp(d[1] / l, -1, 1)));
+}
+const BLADE_LEN = 5, BLADE_TALL = .96, TIP = .75;
+const OBSIDIAN = [.045, .045, .065], SILVER = [.84, .86, .9], BRASS = [.86, .66, .22], RUNE = [1, .12, .28];
+// Her greatsword: black slab, silver bevel on top, slanted point, long banded grip.
+// u runs along the blade from the hand, k across it (positive is the lower side)
+function drawGreatsword(h, a, rise, col) {
+  const cr = Math.cos(rise), dir = [Math.sin(a) * cr, Math.sin(rise), Math.cos(a) * cr];
+  const flat = Math.sin(rise), down = [flat * Math.sin(a), -cr, flat * Math.cos(a)];
+  const along = d => h.map((p, i) => p + dir[i] * d);
+  const at = (u, k) => along(u).map((p, i) => p + down[i] * k);
+  const bar = (u0, u1, k, wide, tall, c, mat = 0) => beamBox(at(u0, k), at(u1, k), wide, tall, col(c), mat);
+  const gem = (u, k, wide, size) => { const p = at(u, k); push(p[0], p[1], p[2], 3, wide, size, size, a + Math.PI / 2 * 0, col(RUNE), -rise + .785); };
+  // grip and pommel
+  bar(-.95, .2, 0, .13, .13, OBSIDIAN);
+  for (let u = -.82; u < .1; u += .22) bar(u, u + .05, 0, .17, .17, SILVER);
+  bar(-1.07, -.92, 0, .22, .22, SILVER); gem(-1, 0, .25, .1);
+  // guard: a heavy silver block with brass trim, a red stone and two fins reaching up the blade
+  bar(.18, .58, 0, .34, 1.04, SILVER);
+  for (const k of [-.55, .55]) bar(.14, .62, k, .38, .09, BRASS);
+  gem(.38, 0, .38, .24);
+  for (const k of [-.45, .45]) beamBox(at(.55, k), at(1.05, k * 1.2), .2, .13, col(BRASS));
+  // blade
+  const end = BLADE_LEN - TIP;
+  bar(.55, end, .13, .14, BLADE_TALL - .26, OBSIDIAN);
+  bar(.55, end, -.35, .12, .26, SILVER);                       // the bevel
+  bar(.55, end, .45, .15, .06, SILVER);                        // thin line along the underside
+  for (let i = 0; i < 10; i++) {                               // the point: slivers that shorten from the top down
+    const u = end + TIP * i / 10, top = -.48 + BLADE_TALL * (i + .5) / 10;
+    bar(u, u + TIP / 10, (top + .48) / 2, .13, .48 - top, OBSIDIAN);
+  }
+  beamBox(at(end, -.38), at(BLADE_LEN, .42), .15, .17, col(SILVER));     // the slanted edge of the point
+  // her mark: a lit crimson channel and three runes
+  bar(1.2, end - .35, .16, .17, .035, RUNE, 3);
+  for (const u of [1.35, 1.75, 2.15]) gem(u, .16, .18, .13);
+  return { dir, along };
+}
+function drawGal(v, time) {
+  const st = v.state, mv = v.move, on = st === 'wind' || st === 'act', t = v.t || 0;
+  const hs = Math.hypot(v.vx || 0, v.vz || 0), air = !v.grounded, run = !on && v.grounded && hs > 1.5;
+  const yaw = v.yaw, sy = Math.sin(yaw), cy = Math.cos(yaw), w = Math.sin(v.phase || 0);
+  const flash = v.hurtT > 0, col = c => flash ? [1, .9, .8] : c;
+  const lean = run ? clamp(hs / 31, 0, 1) * .35 : 0;
+  const at = (side, up, fwd) => [v.x + side * cy + (fwd + up * lean) * sy, v.y + up, v.z - side * sy + (fwd + up * lean) * cy];
+  const box = (side, up, fwd, bw, bh, bd, c, mat = 0, pitch = 0) => { const p = at(side, up, fwd); push(p[0], p[1], p[2], flash ? 3 : mat, bw, bh, bd, yaw, col(c), pitch + lean * .6); };
+  const stride = run ? w * .45 : air ? .3 : 0;
+  for (const side of [-1, 1]) {                                // long legs, tall boots
+    const swing = side * stride;
+    beamBox(at(side * .17, 1.15, 0), at(side * .19, .62, swing * .5 + (air ? .25 : 0)), .2, .22, col(GALCOAT));
+    beamBox(at(side * .19, .62, swing * .5 + (air ? .25 : 0)), at(side * .2, .08 + (run ? Math.max(0, -side * Math.cos(v.phase)) * .3 : air ? .2 : 0), swing), .2, .2, col(HILT));
+  }
+  box(0, 1.22, 0, .5, .2, .3, HILT);
+  box(0, 1.42, 0, .36, .26, .24, GALCOAT);
+  box(0, 1.72, .01, .56, .4, .32, GALCOAT); box(0, 1.74, .18, .12, .34, .03, GALRED);
+  for (const side of [-1, 1]) beamBox(at(side * .22, 1.18, -.1), at(side * .36, .55 + (air || run ? .3 : 0), -.35 - (run ? .45 : 0)), .24, .05, col(GALRED));   // coat tails
+  box(0, 1.98, 0, .46, .1, .36, GALRED);
+  box(0, 2.2, 0, .3, .32, .3, GALSKIN);
+  box(0, 2.4, -.02, .36, .13, .36, GALHAIR); box(0, 2.22, -.17, .34, .3, .08, GALHAIR);
+  box(-.08, 2.22, .155, .08, .04, .02, GALRED, 3); box(.08, 2.22, .155, .08, .04, .02, GALRED, 3);
+  const sway = Math.sin(time * 5) * .08, back = .25 + clamp(hs / 20, 0, 1) * .55;
+  beamBox(at(0, 2.42, -.18), at(sway, 2.05 + clamp(hs / 25, 0, 1) * .3, -.25 - back), .17, .17, col(GALHAIR));
+  beamBox(at(sway, 2.05 + clamp(hs / 25, 0, 1) * .3, -.25 - back), at(sway * 2, 1.55 + clamp(hs / 25, 0, 1) * .6, -.3 - back * 1.8), .11, .11, col(GALHAIR));
+
+  // where the sword is: hand position, and which way the blade points (turn, rise)
+  let hand = [.55, 1.3, .2], turn = Math.PI * .62, rise = -.27;
+  const ease = (a, b, k) => a + (b - a) * clamp(k, 0, 1);
+  if (run) { hand = [.55, 1.2, -.15]; turn = Math.PI * .94; rise = -.27; }                 // dragged behind
+  if (on && mv === 'combo') {
+    const n = v.n ?? ((t / .25 | 0) % 3), k = (v.n === undefined ? t % .25 : t) / .17;
+    hand = [.2, 1.55, .55];
+    if (n === 2) { turn = 0; rise = ease(1.5, -.45, k); }
+    else { turn = n ? ease(-1.9, 1.7, k) : ease(1.9, -1.7, k); rise = n ? .15 : -.05; }
+    if (st === 'wind') { turn = 2; rise = .6; }
+  } else if (mv === 'charge' || on && mv === 'draw' && st === 'wind') { hand = [-.7, 1.3, .1]; turn = Math.PI * 1.06; rise = 0; }
+  else if (on && (mv === 'draw' || mv === 'dash' || mv === 'wave' || mv === 'cross')) { hand = [.15, 1.55, .5]; turn = ease(2.3, -2.1, t / .12); rise = .05; }
+  else if (on && (mv === 'split' || mv === 'leap')) { hand = [0, 2, .4]; turn = 0; rise = ease(1.45, -1.25, (t - .1) / .15); }
+  else if (on && mv === 'rise') { hand = [.2, 1.5, .5]; turn = 0; rise = ease(-1, 1.45, t / .25); }
+  else if (mv === 'parry' && on) { hand = [-.15, 1.4, .55]; turn = 1.35; rise = .55; }
+  else if (on && mv === 'horizon') { hand = [.65, 2.05, .2]; turn = t < HORIZON_WIND && st !== 'act' ? Math.PI : ease(2.6, -2.2, (t - HORIZON_WIND) / .1); rise = t < HORIZON_WIND ? .7 : 0; }
+  else if (air) { hand = [.5, 1.5, 0]; turn = Math.PI * .8; rise = .35; }
+  if (v.surf) { hand = [.1, .62, -.2]; turn = 0; rise = 0; }
+
+  const h = at(...hand), a = yaw + turn;
+  // never into the ground: the whole blade, point and lower edge included, is tipped up until it clears
+  const floor = v.grounded ? v.y : 0;
+  while (rise < 1.5 && h[1] - floor + Math.sin(rise) * BLADE_LEN - .55 * Math.cos(rise) < .04) rise += .02;
+  const { dir, along } = drawGreatsword(h, a, rise, col);
+  for (const side of [-1, 1]) beamBox(at(side * .38, 1.86, 0), side > 0 ? h : [h[0] - dir[0] * .3, h[1] - dir[1] * .3, h[2] - dir[2] * .3], .15, .15, col(GALCOAT));
+  const len = BLADE_LEN;
+  if (run && fxDt && Math.random() < fxDt * 45) { const p = along(len); quietly(() => debris(p[0], v.y + .15, p[2], rr(.07, .14), [1, .75, .3], rr(-4, 4), rr(2, 8), rr(-4, 4), rr(.15, .35))); }
+  if (mv === 'horizon' && on && (st === 'wind' || t < HORIZON_WIND)) for (let d = 3; d < HORIZON_REACH; d += 3)   // the warning line
+    for (const side of [-3.2, 0, 3.2]) push(v.x + sy * d + cy * side, v.y + .15, v.z + cy * d - sy * side, 3, side ? .14 : .35, .12, side ? 1.2 : 2.4, yaw, GALRED);
+  if (v.enraged) for (let i = 0; i < 6; i++) { const q = time * 5 + i * 1.05; push(v.x + Math.sin(q) * 1.1, v.y + .4 + (time * 2 + i * .45) % 2.4, v.z + Math.cos(q) * 1.1, 3, .1, .1, .1, q, GALRED, q); }
+}
+function drawGalPlayer(time) {
+  const m = P.cm;
+  drawGal({ x: P.x, y: P.y, z: P.z, vx: P.vx, vz: P.vz, yaw: P.yaw, phase: P.phase, grounded: P.grounded || !!P.wall, hurtT: P.hurtT - .2, enraged: P.style >= 100,
+    surf: P.slide, state: m ? 'act' : 'idle', move: m ? m.name : '', t: m ? m.t : 0, n: m?.name === 'combo' ? m.n : undefined }, time);
+}
+
 function drawModel(kind, v, time, mirror) {
+  if (kind === 'slash') return drawGal(v, time);
   if (kind === 'cinder') return drawKnight(v, time, v.x, v.y, v.z, mirror ? FROST : FIRE);
   tint = mirror;
   if (kind === 'brute') drawBrute(v, time); else if (kind === 'halo') drawHalo(v, time); else drawHeroAs(v, time);
@@ -2667,7 +2979,7 @@ function drawStars(x, y, z, time) {
 }
 function drawEnemy(time, alpha) {
   if (remoteDrawing) return;
-  const top = { hero: 2.7, cinder: 3.9, brute: 4.7, halo: 3.3 };
+  const top = { hero: 2.7, cinder: 3.9, brute: 4.7, halo: 3.3, slash: 3.3 };
   if (!E.dead && E.dazed > 0) drawStars(E.x, E.y + top[foe], E.z, time);
   if (P.stunT > 0) drawStars(P.x, P.y + top[who], P.z, time);
   if (pvp) return drawRemote(time);
@@ -2842,6 +3154,13 @@ function drawEnemyEffects(time) {
       if (y > 0) push(w.p[0] + sx * side - fx * back, y, w.p[2] + sz * side - fz * back, 3, rad * .24, .3 - ring * .07, .3 - ring * .07, w.yaw, ring ? [.5, .72, .95] : [.92, .97, 1], 0, a + 1.5708);
     }
   }
+  else if (w.kind === 'arc') {                                // a pale crescent
+    for (let i = -4; i <= 4; i++) {
+      const a = i * .24, side = Math.sin(a) * 3.2, up = i * .22, back = (1 - Math.cos(a)) * 3.2;
+      push(w.p[0] + Math.cos(w.yaw) * side - Math.sin(w.yaw) * back, w.p[1] + up, w.p[2] - Math.sin(w.yaw) * side - Math.cos(w.yaw) * back,
+           3, .9, .16, .3, w.yaw + a, i % 2 ? [.75, .9, 1] : [1, 1, 1], 0, .27);
+    }
+  }
   else if (w.kind === 'rock') push(...w.p, 0, 2.4, 2.1, 2.3, w.life * 9, [.4, .34, .3], w.life * 7);
   else if (w.kind === 'sickle') { if (foe !== 'hero') drawSickle(w.p, w.life * 22, 1.57, 1.8); }
   else for (const roll of [.75, -.75]) {          // a burning X in flight
@@ -2900,6 +3219,7 @@ function newCiv(axis) {                                      // crowds are thick
 }
 const BLOOD = [.45, .015, .01];
 function killCiv(p, dx = 0, dz = 0) {
+  if (truce.t > 0) return;
   if (p.dead) return;
   const l = Math.hypot(dx, dz) || 1;
   Object.assign(p, { dead: CORPSE_TIME, panic: 0, held: false, flung: false, lethal: false, yaw: Math.atan2(dx / l, dz / l), seed: Math.random() * 6.283 });
@@ -2913,6 +3233,7 @@ function placeCar(c) {                                       // right-hand lanes
   c.y = 0;
 }
 function wreckCar(c, x, z, force) {
+  if (truce.t > 0) return;
   if (c.held) return;
   if (c.wreck > 0) { c.vy = Math.max(c.vy, force * .5); return; }
   const dx = c.x - x, dz = c.z - z, d = Math.hypot(dx, dz) || 1;
@@ -3466,7 +3787,7 @@ function buildScene(time) {
     return;
   }
   if (who !== 'hero') {
-    if (who === 'cinder') drawCinderPlayer(time); else if (who === 'halo') drawHaloPlayer(time); else drawBrutePlayer(time);
+    if (who === 'cinder') drawCinderPlayer(time); else if (who === 'slash') drawGalPlayer(time); else if (who === 'halo') drawHaloPlayer(time); else drawBrutePlayer(time);
     for (const t of thrown) push(t.p[0], t.p[1], t.p[2], 0, 2.6, 2.2, 2.6, t.spin * .7, t.color, t.spin);
     if (P.held?.type === 'rock') push(...holdPoint(), 0, 2.8, 2.3, 2.7, P.yaw, P.held.color);
     drawEnemy(time, drawAlpha); drawEnemyEffects(time); return;
@@ -3604,7 +3925,7 @@ function setView(eye, f, roll, fov, time, aspect, focus) {
 }
 // frame a fighter so he stands at screen position ndc (-1 left … 1 right)
 function previewCamera(time, aspect) {
-  const [d, mid] = { hero: [5.4, 1.2], cinder: [8.2, 1.85], brute: [10.8, 2.2], halo: [6, 1.35] }[preview.kind], fov = 42;
+  const [d, mid] = { hero: [5.4, 1.2], cinder: [8.2, 1.85], brute: [10.8, 2.2], halo: [6, 1.35], slash: [8.2, 1.4] }[preview.kind], fov = 42;
   const f = norm([0, -.04, 1]), r = norm(cross(f, [0, 1, 0])), side = preview.ndc * d * Math.tan(fov * Math.PI / 360) * aspect;
   setView([0, 1, 2].map(i => [0, mid, 0][i] - f[i] * d - r[i] * side), f, 0, fov, time, aspect, [0, 0, 0]);
 }
@@ -3856,7 +4177,7 @@ function flushDebris() {
 }
 
 function resetWorld() {
-  genCity(); initLife(); resetPlayer(); fallers = []; resetEnemy(); history = []; popup.t = 0; hitStop = 0; craters.fill(0); thrown.length = 0; debrisQueue.length = 0;
+  genCity(); initLife(); resetPlayer(); fallers = []; resetEnemy(); history = []; popup.t = 0; hitStop = 0; craters.fill(0); thrown.length = 0; debrisQueue.length = 0; truce.t = 0;
   device.queue.writeBuffer(partBuf, 0, new Float32Array(NDEB * 12));
   debrisLive = 0;
 }
@@ -3911,7 +4232,7 @@ function render(dt, time, alpha = 1) {
 // ───────────────────────── events + loop ─────────────────────────
 const locked = () => document.pointerLockElement === canvas;
 // ───────────────────────── online 1v1 (WebRTC, peer to peer) ─────────────────────────
-const PROTO = 2;
+const PROTO = 4;
 const PEER_LIB = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';   // only loaded when you go online
 const LOCAL_NET = new URLSearchParams(location.search).get('net') === 'local';   // two tabs on one computer, for testing
 // the parts of a fighter the other side needs in order to draw them
@@ -4010,11 +4331,13 @@ function pvpSpawn() {
   Object.assign(P, { x: 0, y: 0, z, px: 0, py: 0, pz: z, vx: 0, vy: 0, vz: 0, yaw, hp: 100, iframe: 2, style: 0, flying: false, held: null, holding: null, chain: null, cm: null });
   cam.yaw = yaw; pvp.pin = null;
   Object.assign(E, { x: 0, y: 0, z: 36 - z, px: 0, py: 0, pz: 36 - z, dead: false, awake: true, state: 'idle', hp: E.max });
+  startTruce(false);
 }
 function pvpDown() {
   pvp.theirs++; netSend({ t: 'down' });
   say('YOU FELL  ·  ' + pvp.mine + ' - ' + pvp.theirs, 2.5);
-  pvpSpawn();
+  P.hp = 1; P.stunT = 0; pvp.pin = null;
+  startTruce(true); popup.t = 1.5;
 }
 
 // everything arriving is from someone else's computer, so check it before using it
@@ -4056,13 +4379,14 @@ function onNet(m) {
     rawDamage = true;
     if (hurtPlayer(loss, num(m.x, -400, 400), num(m.z, -400, 400), 14) && pvp) P.iframe = Math.min(P.iframe, .22);   // fast combos still land
     rawDamage = false;
-  } else if (m.t === 'stun') { P.stunT = num(m.d, 0, 1); say('STUNNED', .7); }
+  } else if (m.t === 'stun') { if (truce.t <= 0) P.stunT = num(m.d, 0, 1); say('STUNNED', .7); }
   else if (m.t === 'crush') {                                // a tower came down on me
     P.iframe = 0; rawDamage = true; hurtPlayer(35, num(m.x, -400, 400), num(m.z, -400, 400), 24); rawDamage = false;
   }
   else if (m.t === 'knock') {
+    if (truce.t > 0) return;
     P.vx = num(m.x, -90, 90); P.vy = num(m.y, -20, 60); P.vz = num(m.z, -90, 90); P.grounded = false; P.flying = false;
-  } else if (m.t === 'down') { pvp.mine++; say('YOU WIN THE ROUND  ·  ' + pvp.mine + ' - ' + pvp.theirs, 2.5); pvpSpawn(); }
+  } else if (m.t === 'down') { pvp.mine++; say('YOU WIN THE ROUND  ·  ' + pvp.mine + ' - ' + pvp.theirs, 2.5); startTruce(true); popup.t = 1.5; }
   else if (m.t === 'slide') landslide(num(m.x, -400, 400), num(m.y, 0, 300), num(m.z, -400, 400), num(m.yaw, -10, 10), false, true);
   else if (m.t === 'topple') {
     const b = buildings[m.i | 0];
@@ -4127,8 +4451,9 @@ const CALLS = {
   cinder: { whirl: 'FIRE WHEEL', dash: 'EMBER DASH', leap: 'COMET CLEAVE', wave: 'CROSS FLARE', rise: 'PHOENIX RISE', rain: 'EMBER RAIN' },
   brute: { charge: 'TITAN PUNCH', dash: 'BULL RUSH', rip: 'LANDSLIDE', slam: 'LANDSLIDE', clap: 'THUNDERCLAP', kickwind: 'TITAN KICK', quake: 'CATACLYSM', ragdoll: 'RAGDOLL' },
   halo: { charge: 'COMET PUNCH', beam: 'SUN GAZE', dive: 'SKYFALL', gale: 'GALE', boom: 'SONIC BURST', flare: 'SOLAR FLARE' },
+  slash: { charge: 'DRAW SLASH', dash: 'AIR DASH CUT', split: 'SKYSPLITTER', wave: 'SWORD WAVE', rise: 'RISING CUT', parry: 'PARRY', horizon: 'HORIZON CUT' },
 };
-const ULTS = ['storm', 'rain', 'quake', 'ragdoll', 'flare'];
+const ULTS = ['storm', 'rain', 'quake', 'ragdoll', 'flare', 'horizon'];
 function callOut(st) {
   const names = CALLS[foe];
   const now = st.cm && names[st.cm.name] ? st.cm.name : Object.keys(names).find(k => k !== 'dash' && k !== 'leap' && st[k]) || '';
@@ -4339,7 +4664,7 @@ function toMain() {
   resetWorld(); show('main');
 }
 function startMatch(a, b) {
-  setMatch(a, b); resume();
+  setMatch(a, b); startTruce(false); resume();
   say(ROSTER[who].name + '  vs  ' + foeName(), 2.4);
 }
 
@@ -4405,7 +4730,7 @@ const ACT = {
   rematch() {
     resetEnemy();
     const x = P.x + Math.sin(cam.yaw) * 18, z = P.z + Math.cos(cam.yaw) * 18;
-    Object.assign(E, { x, z, y: P.y, px: x, pz: z, py: P.y, awake: true, cd: 1.4 }); P.hp = 100; resume();
+    Object.assign(E, { x, z, y: P.y, px: x, pz: z, py: P.y, awake: true, cd: 1.4 }); P.hp = 100; startTruce(false); resume();
   },
   rebuild() { resetWorld(); resume(); },
   toggle(id) { settings[id] = !settings[id]; applySettings(); show('options'); },
@@ -4511,7 +4836,7 @@ function frame(now) {
   $('pop').textContent = popup.t > 0 ? popup.text : '';
   const away = Math.hypot(E.x - P.x, E.z - P.z);
   $('boss').style.display = E.dead ? 'none' : 'block';
-  const tone = foe === who || foe === 'hero' ? '#3fa0ff' : foe === 'brute' ? '#d8523a' : foe === 'halo' ? '#f2c53d' : '#ff5a1f';
+  const tone = foe === who || foe === 'hero' ? '#3fa0ff' : foe === 'brute' ? '#d8523a' : foe === 'halo' ? '#f2c53d' : foe === 'slash' ? '#e0305a' : '#ff5a1f';
   $('boss').style.color = '#ffe0d0';
   $('boss').children[1].firstChild.style.background = tone;
   $('boss').children[0].textContent = (pvp ? 'OPPONENT · ' + ROSTER[foe].name + ' · ' + pvp.mine + '-' + pvp.theirs + ' · ' + pvp.ping + ' ms' : foeName()) + (E.awake ? '' : ' (waiting)') + '  ·  ' + away.toFixed(0) + ' m';
@@ -4537,7 +4862,7 @@ const sim60 = () => { fighting = true; for (let i = 0; i < 2; i++) step(STEP); u
 window.game = {
   async bench(n = 60) { render(0, 1); await device.queue.onSubmittedWorkDone(); const t = performance.now(); for (let i = 0; i < n; i++) render(0, 1); await device.queue.onSubmittedWorkDone(); return { ms: +((performance.now() - t) / n).toFixed(2), w: canvas.width, h: canvas.height }; },
   P, cam, press, release, step, STEP, carve, updateCollapse, resetWorld, render,
-  setDebug(v) { debug = v; }, get fallers() { return fallers; }, openRoom, netTick, netClose, get pvp() { return pvp; }, get netStatus() { return netStatus; }, pick(k) { pickWho = k; }, step60(s) { for (let t = 0; t < s; t += 1 / 60) { sim60(); } }, get roster() { return ROSTER; }, TRIM, setMatch, get flames() { return flames; }, get rubble() { return rubble; }, get slides() { return slides; }, settings, show, startMatch, saveGame, loadGame, toMain, pause,
+  setDebug(v) { debug = v; }, truce, get fallers() { return fallers; }, openRoom, netTick, netClose, get pvp() { return pvp; }, get netStatus() { return netStatus; }, pick(k) { pickWho = k; }, step60(s) { for (let t = 0; t < s; t += 1 / 60) { sim60(); } }, get roster() { return ROSTER; }, TRIM, setMatch, get flames() { return flames; }, get rubble() { return rubble; }, get slides() { return slides; }, settings, show, startMatch, saveGame, loadGame, toMain, pause,
   get mode() { return mode; }, get screen() { return screen; }, get who() { return who; }, get foe() { return foe; },
   chooseFighter(name) { setMatch(name, 'cinder'); }, get rain() { return rain; }, get dyn() { return dynCount; }, E, get waves() { return waves; }, setFighting(v) { fighting = v; }, startMove, damageEnemy,
   get buildings() { return buildings; },
