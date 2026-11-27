@@ -412,7 +412,9 @@ function fireChain() {
   if (!found) { startLash(false); return; }                // nothing to catch: the blade just snaps out
   const { a, ent } = found;
   P.chain = { a, ent, t: 0, dur: Math.hypot(a[0] - P.x, a[1] - P.y, a[2] - P.z) / 600 + .01, attached: false, zip: false, len: 0,
-    slack: !!ent || a[1] < P.y + 4 };                      // only a hook overhead is something to swing from
+    // on the ground only a hook overhead swings you; in the air any hook into a building that is not below you does.
+    // People, cars, the street and anything below stay slack, for reeling in
+    slack: !!ent || (P.grounded ? a[1] < P.y + 4 : a[1] < Math.max(6, P.y - 2)) };
   P.lash = P.reel = null; P.dive = false; P.glide = false; P.yaw = cam.yaw;
   sfx(.25, 2600, .15);
 }
