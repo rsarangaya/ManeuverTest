@@ -199,13 +199,15 @@ function dust(x, y, z, n, speed) {
 }
 
 let byEnemy = false;
+// online, how many holes a frame can send: enough for a railgun laser through a row of towers (about 4.5 kB)
+const CARVE_SYNC = 150;
 // Remove every voxel within radius r of (x,y,z). Returns number removed.
 function carve(x, y, z, r, push = 14) {
   if (truce.t > 0) return 0;                       // a truce spares the city too
   if (fxLog) return quietly(() => carve(x, y, z, r, push));
   let removed = 0;
   if (!byEnemy) strikeEnemy(x, y, z, r);
-  if (pvp && !remoteCarve && pvp.carves.length < 60) pvp.carves.push([+x.toFixed(2), +y.toFixed(2), +z.toFixed(2), +r.toFixed(2), push | 0]);
+  if (pvp && !remoteCarve && pvp.carves.length < CARVE_SYNC) pvp.carves.push([+x.toFixed(2), +y.toFixed(2), +z.toFixed(2), +r.toFixed(2), push | 0]);
   disturb(x, y, z, r);
   for (const b of buildings) {
     if (x + r <= b.x || x - r >= b.x + b.nx * V || z + r <= b.z || z - r >= b.z + b.nz * V || y - r >= b.ny * V) continue;
@@ -1266,8 +1268,8 @@ function horizonCut(x, y, z, yaw, mine) {
 // ───────── SHOOTYGAL: fast, fragile up close, deadly with room to aim ─────────
 const RIFLE_DMG = 13, HEAD_BONUS = 1.5, AMMO = 12, RELOAD = 1.4, BULLET = 190;
 // the railgun: her ultimate. Superspeed while it is out, and two lasers that go straight through anything.
-// RAIL_WIDTH is the laser's radius: 5 m across, as tall as TANKBOI
-const RAIL_DMG = 140, RAIL_TIME = 10, RAIL_WIDTH = 2.5, RAIL_REACH = 160, RAIL_GAP = .35, RAIL_FLASH = .3, RAIL_RUSH = 1.7;
+// RAIL_WIDTH is the laser's radius: 10 m across
+const RAIL_DMG = 120, RAIL_TIME = 10, RAIL_WIDTH = 5, RAIL_REACH = 160, RAIL_GAP = .35, RAIL_FLASH = .3, RAIL_RUSH = 1.7;
 const GUNFIRE = new Set(['shot', 'pellet', 'net', 'flash', 'ric']);
 // a shot in flight; waves already travel, draw and cross the network
 function fire(from, d, kind, speed, life, extra = {}) {
@@ -2781,7 +2783,7 @@ const ROSTER = {
       ['mouse2', 'Air Dash Cut', 'Slice along your aim; a hit gives the dash back'], ['KeyC', 'Blade Surf', 'Slide on the sword; hold against a wall to ride down it'],
       ['KeyF', 'Skysplitter', 'One long downward slash. Right after a Rising Cut lands, it homes in'], ['KeyG', 'Sword Wave', 'A flying crescent; walls stop it'], ['KeyT', 'Rising Cut', 'Launch them into the air'],
       ['KeyZ', 'Parry', 'A split second that turns any hit back. 1.5 s cooldown with cooldowns on'], ['KeyQ', 'Horizon Cut', 'Ultimate: aim the warning line with the mouse. The sky darkens and a diagonal cut slices a tower apart']] },
-  shoot: { name: 'SHOOTYGAL', role: 'Mercenary gunslinger', stats: [4, 5, 5, 2], speed: 1.22, jump: 1.05, armor: .88, power: 1.45, hp: 1100, netHp: 990, size: .8, deal: 1.1, netDeal: 1.34, camH: 3, camD: 7, tempo: 1.05,
+  shoot: { name: 'SHOOTYGAL', role: 'Mercenary gunslinger', stats: [4, 5, 5, 2], speed: 1.22, jump: 1.05, armor: .88, power: 1.45, hp: 1100, netHp: 990, size: .8, deal: 1.1, netDeal: 1.24, camH: 3, camD: 7, tempo: 1.05,
     desc: 'The quickest on her feet, with a scoped rifle, a shotgun and a bag of tricks. Wants room to aim; hates being grabbed hold of up close. Twelve rounds, then she reloads.',
     moves: [['mouse0', 'Fire', 'Rifle: one precise round. Shotgun: brutal up close, weak at range'], ['mouse0', 'Triple burst (hold)', 'Rifle only: three quick rounds'], ['mouse2', 'Scope (hold)', 'Rifle only: zoom in and walk'], ['KeyV', 'Switch weapon', 'Rifle or shotgun'],
       ['KeyT', 'Jump pad', 'Launches whoever steps on it'], ['KeyF', 'Trip mine', 'Arms itself, then throws them into the air'], ['KeyG', 'Net', 'Shoves them back; stops a charge dead'],
@@ -3637,7 +3639,7 @@ function drawGunner(v, time) {
     const side = [u[2] / sl, 0, -u[0] / sl], up = [side[1] * u[2] - side[2] * u[1], side[2] * u[0] - side[0] * u[2], side[0] * u[1] - side[1] * u[0]];
     push(...mid, 3, .5 + .6 * k, .5 + .6 * k, l, yw, [1, 1, 1], pitch);                      // white-hot core
     push(...mid, 3, r * .35 * k + .3, r * .35 * k + .3, l, yw, [.35, .85, 1], pitch);       // cyan glow
-    const skip = Math.min(4, l / 2), sm = b.from.map((x, i) => x + u[i] * (skip + (l - skip) / 2));   // the outer ring starts clear of her
+    const skip = Math.min(r + 1, l / 2), sm = b.from.map((x, i) => x + u[i] * (skip + (l - skip) / 2));   // the outer ring starts clear of her
     for (let i = 0; i < 10; i++) {                           // a ring of strands, as wide as it hits
       const a = i / 10 * 6.283 + (b.t || 0) * 9, o = side.map((s, j) => (s * Math.cos(a) + up[j] * Math.sin(a)) * r * (.8 + .2 * k));
       push(sm[0] + o[0], sm[1] + o[1], sm[2] + o[2], 3, .14, .14, l - skip, yw, [.5, 1, 1], pitch);
@@ -4956,10 +4958,12 @@ function resetWorld() {
 }
 
 let dusk = 0;
+// the ultimates, as moves (theirs and the computer's): Reaper Sphere and the railgun are flags of their own
+const ULT_MOVES = new Set(['rain', 'quake', 'ragdoll', 'flare', 'horizon', 'sphere', 'rail']);
 function render(dt, time, alpha = 1) {
-  // anyone's Horizon Cut or railgun darkens the world: mine, the computer's, or the other player's
-  const cutting = P.cm?.name === 'horizon' || pvp?.state?.s.cm?.name === 'horizon' || !!P.rail || !!pvp?.state?.s.rail ||
-    !E.dead && (E.move === 'horizon' || E.move === 'rail') && (E.state === 'wind' || E.state === 'act');
+  // any ultimate darkens the world: mine, the computer's, or the other player's
+  const ulting = s => !!s && (ULT_MOVES.has(s.cm?.name) || !!s.storm || !!s.rail);
+  const cutting = ulting(P) || ulting(pvp?.state?.s) || !E.dead && ULT_MOVES.has(E.move) && (E.state === 'wind' || E.state === 'act');
   dusk = preview ? 0 : dusk + ((cutting ? 1 : 0) - dusk) * Math.min(1, dt * (cutting ? 7 : 2));
   fxDt = dt;
   drawAlpha = alpha;
@@ -5159,7 +5163,7 @@ function onNet(m) {
     if (Array.isArray(m.f)) playFx(m.f);
     showThrows(Array.isArray(m.o) ? m.o.filter(Array.isArray) : []);     // none listed = all have landed
     callOut(m.s);
-    if (Array.isArray(m.c)) for (const c of m.c.slice(0, 60)) {
+    if (Array.isArray(m.c)) for (const c of m.c.slice(0, CARVE_SYNC)) {
       remoteCarve = byEnemy = true;
       carve(num(c[0], -400, 400), num(c[1], -5, 300), num(c[2], -400, 400), num(c[3], 0, 30), num(c[4], -50, 60));
       remoteCarve = byEnemy = false;
