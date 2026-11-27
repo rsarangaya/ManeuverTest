@@ -14,6 +14,8 @@
   #bar i{display:block;height:100%;background:#ffb340;width:0}
   #meter{position:fixed;left:50%;bottom:48px;width:240px;margin-left:-120px;height:10px;border:1px solid #fff6;border-radius:4px;background:#000a;overflow:hidden;pointer-events:none}
   #meter i{display:block;height:100%}
+  .bubble{position:fixed;display:none;transform:translate(-50%,-100%);max-width:240px;padding:8px 12px;border-radius:14px;background:#fff;color:#111;font:800 15px/1.2 system-ui,sans-serif;text-align:center;pointer-events:none}
+  .bubble::after{content:'';position:absolute;left:50%;top:100%;margin-left:-8px;border:8px solid transparent;border-top-color:#fff;border-bottom:0}
   #style{position:fixed;left:50%;bottom:20px;width:360px;margin-left:-180px;height:22px;border:2px solid #8cf9;border-radius:6px;background:#000a;overflow:hidden;pointer-events:none}
   #style i{display:block;height:100%;background:#2f86d6;width:0}
   #style span{position:absolute;inset:0;text-align:center;font:700 12px/18px system-ui,sans-serif;letter-spacing:2px;color:#fff;text-shadow:0 1px 3px #000}
@@ -32,7 +34,7 @@
   #blind{position:fixed;inset:0;pointer-events:none;opacity:0;background:#fff}
   #cross.scoped{width:5px;height:5px;margin:-2.5px;background:#f33;opacity:1;outline:2px solid #fffc;outline-offset:44px}
   #hurt{position:fixed;inset:0;pointer-events:none;opacity:0;box-shadow:inset 0 0 140px 40px #d1200f}
-  body.inmenu #help,body.inmenu #stats,body.inmenu #cross,body.inmenu #bar,body.inmenu #style,body.inmenu #meter,body.inmenu #pop,body.inmenu #boss,body.inmenu #hp,body.inmenu #hurt,body.inmenu #msg{display:none!important}
+  body.inmenu #help,body.inmenu #stats,body.inmenu #cross,body.inmenu #bar,body.inmenu #style,body.inmenu #meter,body.inmenu #pop,body.inmenu #boss,body.inmenu #hp,body.inmenu #hurt,body.inmenu #msg,body.inmenu .bubble{display:none!important}
   #menu{position:fixed;inset:0;z-index:5;pointer-events:none;font-size:14px}
   #menu *{box-sizing:border-box}
   .pane{position:absolute;pointer-events:auto;background:#0a0f1ee6;border:1px solid #6fb7ff33;border-radius:12px;padding:18px;overflow:auto}
@@ -71,6 +73,7 @@
 <body class="inmenu">
 <canvas id="c"></canvas>
 <div id="cross"></div>
+<div class="bubble"></div><div class="bubble"></div>
 <div id="help" class="p"></div>
 <div id="stats" class="p"></div>
 <div id="bar"><i></i></div>
@@ -327,7 +330,7 @@ const cam = { yaw: .7, pitch: -.05, dist: 10, shake: 0, fov: 70, pos: [0, 5, -10
 const P = {};
 function resetPlayer() {
   Object.assign(P, { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: .7, grounded: true, wall: null,
-    charge: -1, airJumps: 1, dashes: 2, dash: 0, dashDir: [0,0,1], act: null, cm: null, leapCharge: -1, leaping: false, rushCd: 0, cds: {}, sun: 100, heat: 0, heatT: 0, empower: 0, vent: 0, burn: null, stunT: 0, ccGuard: 0, parryCd: 0, juggle: 0, cuts: 2, ammo: 12, gun: 0, scope: false, reload: 0, burst: 0, burstT: 0, pumpCd: 0, padCd: 0, trapCd: 0, netCd: 0, flashCd: 0, ricCd: 0, rollCd: 0, pad: null, trap: null, blindT: 0, ultLock: 0, cooled: true, held: null, flying: false, beam: null, swings: 0, hp: 100, iframe: 0, hurtT: 0, style: 0, zipT: 0, atkBuf: 0, hold: 0, cross: null, crossUsed: false, spin: null, chainHits: 0, lastHit: -9, storm: null, meteor: null, guill: null, kick: null, orbit: null, rail: null, railBeam: null, inferno: 0, titan: 0, cutMark: null,
+    charge: -1, airJumps: 1, dashes: 2, dash: 0, dashDir: [0,0,1], act: null, cm: null, leapCharge: -1, leaping: false, rushCd: 0, cds: {}, sun: 100, heat: 0, heatT: 0, empower: 0, vent: 0, burn: null, stunT: 0, ccGuard: 0, parryCd: 0, juggle: 0, cuts: 2, ammo: 12, gun: 0, scope: false, reload: 0, burst: 0, burstT: 0, pumpCd: 0, padCd: 0, trapCd: 0, netCd: 0, flashCd: 0, ricCd: 0, rollCd: 0, pad: null, trap: null, blindT: 0, ultLock: 0, cooled: true, held: null, flying: false, beam: null, swings: 0, hp: 100, iframe: 0, hurtT: 0, style: 0, zipT: 0, atkBuf: 0, hold: 0, cross: null, crossUsed: false, spin: null, chainHits: 0, lastHit: -9, storm: null, meteor: null, guill: null, kick: null, orbit: null, rail: null, railBeam: null, drive: null, yell: null, inferno: 0, titan: 0, cutMark: null,
     reelBlock: null, whirl: null, carving: null, wasCarving: false, carveY: undefined, slashSide: 1, glide: false, dive: false, peak: 0,
     punch: 0, cool: 0, phase: 0, holding: null, coyote: 0, wallLock: 0, spaceAir: 0,
     h: 2, slide: false, slideCd: 0, shield: 0, calm: 0, mantle: null, jumpBuf: 0, landT: 1, airPress: false, px: 0, py: 0, pz: 0, chain: null, lash: null, reel: null, slashT: 0 });
@@ -1269,6 +1272,102 @@ function horizonCut(x, y, z, yaw, mine) {
   cam.shake = 1.6; hitStop = .12; sfx(1, 2000, .6); sfx(1, 260, 1.1);
 }
 
+// ───────── CIVILIANBOI: just a normal guy. Punches, swearing, and eventually a car ─────────
+const PUNCHES = [{ name: 'JAB', pct: 5 }, { name: 'CROSS', pct: 6 }, { name: 'HOOK', pct: 7 }, { name: 'UPPERCUT', pct: 10 }];   // % of health, against another CIVILIANBOI
+const PUNCH_TIME = .28, PUNCH_ULT = 5, CAR_TIME = 10, CAR_SPEED = 32, CAR_HIT = 50;
+const CUSSES = ['WHAT THE HELL!', 'HOLY SHIT!', 'FUCK OFF!', 'OH FUCK NO!', 'BULLSHIT!', 'SON OF A BITCH!', 'DAMN IT!', 'PISS OFF!', 'ARE YOU FUCKING KIDDING ME?!', 'ASSHOLE!', 'NOPE NOPE NOPE, SHIT!', 'MY FUCKING BACK!'];
+const randomLook = () => [Math.random() * SHIRTS.length | 0, Math.random() * SKINS.length | 0];
+const newYell = last => ({ i: (( last?.i ?? Math.random() * CUSSES.length | 0) + 1 + (Math.random() * (CUSSES.length - 1) | 0)) % CUSSES.length, t: 2 });
+// his hits: another CIVILIANBOI is an equal and takes a real share of health; anyone else takes exactly 1 point
+function civStrike(pct, knock) {
+  if (E.dead || E.inv > 0 || truce.t > 0) return false;
+  const equal = foe === 'civ';
+  E.inv = .1; E.hurtT = .18;
+  if (pvp) netSend(equal ? { t: 'hit', pct, k: knock, x: P.x, z: P.z } : { t: 'hit', hp: 1, x: P.x, z: P.z });
+  else {
+    E.awake = true; E.hp -= equal ? pct / 100 * E.max : 1;
+    if (equal && knock) { const d = Math.hypot(E.x - P.x, E.z - P.z) || 1; E.vx = (E.x - P.x) / d * knock; E.vz = (E.z - P.z) / d * knock; E.vy = 8; E.stun = .3; }
+    if (E.hp <= 0) enemyDown();
+  }
+  for (let i = 0; i < (equal ? 8 : 2); i++) debris(E.x, E.y + 1.4, E.z, rr(.08, .16), [1, .9, .6], rr(-10, 10), rr(0, 10), rr(-10, 10), rr(.15, .35));
+  hitStop = Math.max(hitStop, .03); sfx(.6, 900, .1);
+  return true;
+}
+function civActions() {
+  P.atkBuf -= STEP;
+  if (pressed.has('mouse2')) { P.yell = newYell(P.yell); sfx(.8, 700, .3); }
+  if (P.drive) return;
+  if (pressed.has('mouse0')) P.atkBuf = .2;
+  if (P.atkBuf > 0 && !P.cm) {
+    P.atkBuf = 0;
+    P.chainHits = clock - P.lastHit < .75 ? (P.chainHits + 1) % PUNCHES.length : 0;
+    P.lastHit = clock;
+    startCm('punch', { n: P.chainHits }); sfx(.2, 1500, .08);
+  }
+  if (pressed.has('KeyQ') && (P.style >= 100 || debug) && P.grounded) {
+    spendUlt(); P.cm = null;
+    P.drive = { t: CAR_TIME, v: 0, yaw: cam.yaw, rest: 0 };
+    say('CAR!', 1.2); dust(P.x, P.y, P.z, 30, 12); sfx(1, 300, .8);
+  }
+}
+function endDrive(crashed) {
+  if (!P.drive) return;
+  const y = P.drive.yaw;
+  P.drive = null;
+  dust(P.x, P.y + 1, P.z, crashed ? 50 : 20, crashed ? 18 : 8);
+  if (!crashed) return;
+  for (let i = 0; i < 24; i++) debris(P.x + Math.sin(y) * 2, P.y + 1, P.z + Math.cos(y) * 2, rr(.15, .45), i % 2 ? [1, .55, .1] : CIV_CAR, rr(-14, 14), rr(3, 18), rr(-14, 14), rr(.5, 1.6));
+  cam.shake = 1.2; sfx(1, 350, .8);
+}
+// health gone without a hit landing: his crash, and 1-point punches
+function loseHealth(pct) {
+  if (debug || (P.hp -= pct) > 0) return;
+  if (pvp) pvpDown(); else { P.hp = 1; say('YOU FELL', 2); startTruce(true); popup.t = 1.5; }
+}
+function stepYell(o, dt) { if (o.yell && (o.yell.t -= dt) <= 0) o.yell = null; }
+function civMove(dt) {
+  const m = P.cm;
+  if (m) {
+    m.t += dt; P.yaw = cam.yaw;
+    if (!m.hit && m.t > .1) {
+      m.hit = true;
+      const dx = E.x - P.x, dz = E.z - P.z, d = Math.hypot(dx, dz);
+      if (d < 2.2 + ROSTER[foe].size && Math.abs(E.y - P.y) < 3 && (d < 1 || (dx * Math.sin(P.yaw) + dz * Math.cos(P.yaw)) / d > .3)
+        && civStrike(PUNCHES[m.n].pct, m.n === 3 ? 18 : 4)) chargeUlt(PUNCH_ULT / ULT_PER_DAMAGE);
+    }
+    if (m.t >= PUNCH_TIME) P.cm = null;
+  }
+  const c = P.drive;
+  if (!c) return false;
+  c.t -= dt; c.rest -= dt;
+  const gas = (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0), turn = (keys.has('KeyA') ? 1 : 0) - (keys.has('KeyD') ? 1 : 0);
+  c.v = gas ? clamp(c.v + gas * (gas * c.v < 0 ? 60 : 26) * dt, -10, CAR_SPEED) : c.v * (1 - 1.5 * dt);
+  const dy = turn * 2.2 * dt * clamp(c.v / 9, -1, 1);
+  c.yaw += dy; cam.yaw += dy; P.yaw = c.yaw;
+  const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw), nose = Math.sign(c.v) * 2.3;
+  if (Math.abs(c.v) > 1 && hit(P.x + fx * nose - .6, P.y + .4, P.z + fz * nose - .6, P.x + fx * nose + .6, P.y + 1.6, P.z + fz * nose + .6)) c.v = 0;
+  P.vx = fx * c.v; P.vz = fz * c.v;
+  if (Math.abs(c.v) > 6) {
+    for (const o of cars) if (!o.wreck && Math.hypot(o.x - P.x - fx * nose, o.z - P.z - fz * nose) < 2.4 && P.y < 2) wreckCar(o, P.x, P.z, Math.abs(c.v) * .6);
+    for (const o of civs) if (!o.dead && !o.held && !o.flung && Math.hypot(o.x - P.x - fx * nose, o.z - P.z - fz * nose) < 1.6 && P.y < 2)
+      Object.assign(o, { flung: true, lethal: false, vx: o.x - P.x, vy: 7, vz: o.z - P.z });      // bystanders get bumped, not hurt
+    const dx = E.x - P.x, dz = E.z - P.z;
+    if (!E.dead && c.rest <= 0 && truce.t <= 0 && Math.abs(E.y - P.y) < 2.5 && Math.abs(dx * fx + dz * fz) < 2.4 + ROSTER[foe].size && Math.abs(dx * fz - dz * fx) < 1.1 + ROSTER[foe].size) {
+      c.rest = 1.2;
+      if (foe === 'civ') { E.inv = 0; civStrike(CAR_HIT, 34); say('RUN OVER!', 1); sfx(1, 300, .5); }
+      else {                                                  // they are too solid for his car
+        endDrive(true); say('YOU CRASHED', 1.6);
+        P.vx = -fx * 14; P.vz = -fz * 14; P.vy = 12; P.grounded = false; P.hurtT = .4;
+        loseHealth(CAR_HIT);
+        return false;
+      }
+    }
+  }
+  if (c.t <= 0) { endDrive(false); return false; }
+  P.vy = Math.max(P.vy - 38 * dt, -75);
+  return true;
+}
+
 // ───────── SHOOTYGAL: fast, fragile up close, deadly with room to aim ─────────
 const RIFLE_DMG = 13, HEAD_BONUS = 1.5, AMMO = 12, RELOAD = 1.4, BULLET = 190;
 // the railgun: her ultimate. Superspeed while it is out, and two lasers that go straight through anything.
@@ -1428,7 +1527,7 @@ function bounce(p) {                                         // anyone can use a
 function whiteout(t) { P.blindT = t; say('BLINDED', .9); }
 
 // how high each fighter carries their head
-const HEAD = { hero: 1.95, cinder: 2.8, brute: 2.9, halo: 1.85, slash: 2.2, shoot: 2.18 };
+const HEAD = { civ: 1.66, hero: 1.95, cinder: 2.8, brute: 2.9, halo: 1.85, slash: 2.2, shoot: 2.18 };
 // does the line of this round pass through the rival's head?
 function headshot(w, dir) {
   if (w.kind !== 'shot' && w.kind !== 'ric') return false;
@@ -1525,6 +1624,7 @@ function netHit(w) {
 // timers, blade hits and movement for the knight. Returns true when it drives velocity
 function cinderMove(dt) {
   if (who === 'shoot') return shootyMove(dt);
+  if (who === 'civ') return civMove(dt);
   if (who === 'slash') return slashMove(dt);
   if (who === 'brute') return bruteMove(dt);
   if (who === 'halo') return haloMove(dt);
@@ -2326,6 +2426,7 @@ function drawHaloPlayer(time) {
 // Optional cooldowns, in seconds, for each special move (Options, Cooldowns). Online the host's choice counts for both.
 // Moves with timers of their own (Bull Rush, Parry, SHOOTYGAL's gadgets) keep them, and lose them when this is off.
 const COOLDOWNS = {
+  civ:    {},
   hero:   { KeyF: 4, KeyG: 6, KeyT: 10, KeyX: 8 },
   cinder: { mouse2: 2, KeyF: 5, KeyG: 3, KeyT: 4, KeyZ: 2 },
   brute:  { KeyF: 8, KeyG: 6, KeyT: 5, KeyZ: 6, KeyX: 4 },
@@ -2355,6 +2456,7 @@ function fighterActions() {
   if (who === 'halo') return haloActions(look);
   if (who === 'slash') return slashActions(look);
   if (who === 'shoot') return shootyActions(look);
+  if (who === 'civ') return civActions();
   if (who === 'cinder') return cinderActions(look);
   const busy = P.storm || P.meteor || P.guill || P.kick || P.cross;
   // attack: instant, buffered; keep holding for CROSSFALL
@@ -2440,6 +2542,7 @@ function stepMantle(dt) {
 }
 
 function stepPlayer(dt) {
+  if (P.stunT > 0 || pvp?.pin) P.drive = null;
   if (P.stunT > 0) {                                        // stunned by the other player
     P.stunT -= dt; P.vx = P.vz = 0; P.cm = P.cross = P.chain = P.act = P.spin = null;
     if (!moveAxis('y', -14 * dt)) P.grounded = false;
@@ -2457,8 +2560,11 @@ function stepPlayer(dt) {
   const wl = Math.hypot(wx, wz);
   if (wl) { wx /= wl; wz /= wl; }
   const sprint = keys.has('ShiftLeft') || keys.has('ShiftRight');
-  const space = keys.has('Space'), crouchKey = keys.has('KeyC');
+  const plain = who === 'civ';                              // a normal guy: no parkour
+  if (P.drive) pressed.delete('Space');
+  const space = keys.has('Space') && !plain, crouchKey = keys.has('KeyC') && !plain;
 
+  stepYell(P, dt); stepYell(E, dt);
   P.cool -= dt; P.rushCd -= dt; P.parryCd -= dt;
   for (const k in P.cds) P.cds[k] -= dt;
   P.ccGuard -= dt;
@@ -2470,7 +2576,7 @@ function stepPlayer(dt) {
   if (pvp?.state?.s?.pad && Number.isFinite(pvp.state.s.pad.x)) bounce(pvp.state.s.pad); P.slashT -= dt; P.punch -= dt; P.wallLock -= dt; P.coyote -= dt; P.slideCd -= dt; P.jumpBuf -= dt;
   if (pressed.has('Space')) P.jumpBuf = .13;               // pressed slightly early still counts
   if (P.mantle) { stepMantle(dt); pressed.clear(); released.clear(); return; }
-  if (P.grounded) { P.coyote = .12; P.airJumps = 1; P.dashes = maxDashes(); P.glide = false; P.airPress = false; P.landT += dt; }
+  if (P.grounded) { P.coyote = .12; P.airJumps = plain ? 0 : 1; P.dashes = maxDashes(); P.glide = false; P.airPress = false; P.landT += dt; }
   actions();
   updateChain(dt);
   updateLash(dt);
@@ -2610,8 +2716,8 @@ function stepPlayer(dt) {
   if (wallN && !P.dash && !P.dive && !P.kick && !P.orbit && !P.guill && !P.storm && !P.cross && !P.carving && !driven) {
     const [nx, nz] = wallN;
     const into = -(wx * nx + wz * nz);
-    if (into > .35 && tryMantle(nx, nz, Math.max(speedIn, sprint ? 20 : 12))) { dropChain(false); pressed.clear(); released.clear(); return; }
-    if (!P.wall && sprint && into > .35 && P.wallLock <= 0 && !blockedAt(P.x, P.y + .6, P.z)) {
+    if (!plain && into > .35 && tryMantle(nx, nz, Math.max(speedIn, sprint ? 20 : 12))) { dropChain(false); pressed.clear(); released.clear(); return; }
+    if (!plain && !P.wall && sprint && into > .35 && P.wallLock <= 0 && !blockedAt(P.x, P.y + .6, P.z)) {
       dropChain(false); P.wall = wallN; P.airJumps = 1; P.dashes = maxDashes(); P.charge = -1; P.glide = false; P.slide = false;
     }
   }
@@ -2623,7 +2729,7 @@ function stepPlayer(dt) {
     cam.dip = clamp(-impact * .014, 0, .8);
     if (who === 'brute' && P.cm?.name !== 'slam' && (P.leaping || impact < -34)) titanLand(-impact);
     else if (P.dive) { act('slam', .34); slam(Math.max(24, (P.peak - P.y) + 30)); jolt(1.2, .1); P.meteor = null; }
-    else if (impact < -60 && !P.chain?.zip && !(P.zipT > .6)) slam(8);
+    else if (impact < -60 && !plain && !P.chain?.zip && !(P.zipT > .6)) slam(8);
     else if (impact < -18) { dust(P.x, P.y, P.z, 10, 7); sfx(.25, 400, .18); }
     P.dive = false;
   }
@@ -2669,6 +2775,7 @@ let pvp = null;                           // the online match, when there is one
 const WINS = 3, PICK_TIME = 30;
 // [id, name, what it does]. Where two fighters share an id, it works the same way for both.
 const UPGRADES = {
+  civ: [],
   hero: [['power', 'Whetted Sickle', 'All your damage +10%'], ['dash', 'Spare Chain', 'One extra mid-air dash'], ['kindle', 'Head Start', 'Begin each round with 35% ultimate'], ['tough', 'Padded Wraps', 'Take 12% less damage']],
   cinder: [['power', 'Hotter Blades', 'All your damage +10%'], ['thirst', 'Cauterise', 'Heal a fifth of the damage you deal'], ['dash', 'Second Flame', 'One extra mid-air dash'], ['kindle', 'Kindling', 'Begin each round with 35% ultimate']],
   brute: [['plate', 'Heavy Plating', 'Take 15% less damage'], ['club', 'Spiked Tail', 'Tail Whack and counters hit 25% harder'], ['guard', 'Iron Guard', 'Brace stops 95% of a hit instead of 80%'], ['regen', 'Thick Hide', 'Slowly heal after 5 s without being hit']],
@@ -2792,8 +2899,14 @@ const ROSTER = {
       ['KeyT', 'Jump pad', 'Launches whoever steps on it'], ['KeyF', 'Trip mine', 'Arms itself, then throws them into the air'], ['KeyG', 'Net', 'Shoves them back; stops a charge dead'],
       ['KeyZ', 'Flash round', 'Whites out their screen'], ['KeyX', 'Ricochet shot', 'Bounces off up to two walls, turning toward them each time, and hits harder'], ['KeyR', 'Reload roll', 'Dodge and refill the magazine'],
       ['KeyQ', 'Railgun', 'Ultimate: superspeed, and two lasers that go straight through buildings. Left click fires where you aim, right click scopes']] },
+  civ: { name: 'CIVILIANBOI', role: 'Normal guy', stats: [1, 2, 1, 1], speed: .5, jump: .75, armor: 1, power: 1, hp: 1000, netHp: 1000, size: .5, deal: 1, netDeal: 1, camH: 2.6, camD: 6, tempo: 1,
+    desc: "He's just a normal guy.",
+    moves: [['ShiftLeft', 'Run away scared', 'Looks just like everyone else running for their life'],
+      ['mouse0', 'Punches', 'Jab, cross, hook, uppercut'], ['mouse2', 'Yell', 'Some choice words'],
+      ['KeyQ', 'Car', 'Ultimate: drive for a while. Running over a CIVILIANBOI takes half their health; hit anyone else and you crash, losing half of yours']] },
 };
 const LABELS = {
+  civ: { combo: 'PUNCHES', yell: 'YELL', car: 'CAR' },
   hero: { combo: 'SICKLE FLURRY', wave: 'SICKLE THROW', dash: 'CHAIN RUSH', cross: 'CROSSFALL', leap: 'METEOR DROP', sphere: 'REAPER SPHERE', blink: 'VANISH' },
   brute: { combo: 'HAMMER FISTS', dash: 'BULL RUSH', wave: 'BOULDER TOSS', clap: 'THUNDERCLAP', leap: 'SKYFALL CRUSH', titan: 'TITAN FORM', blink: 'SIDESTEP' },
   cinder: {},
@@ -2812,13 +2925,15 @@ function resetEnemy() {
   E.max = ROSTER[foe].hp;
   Object.assign(E, { x: HOME[0], y: HOME[1], z: HOME[2], px: HOME[0], py: HOME[1], pz: HOME[2], vx: 0, vy: 0, vz: 0, yaw: Math.PI,
     hp: E.max, awake: false, dead: false, state: 'idle', t: 0, cd: 1, hurtT: 0, inv: 0, hits: 0, target: [0, 0, 0], dir: [0, 0, 1],
-    enraged: false, inferno: 0, titan: 0, cutMark: null, dazed: 0, ccGuard: 0, stun: 0, stunned: false, stunFor: 0, poise: 0, flung: false, grounded: true, last: '', phase: 0, carveT: 0, chase: 0, hops: 0, poked: 0, pokeT: 0, guard: 0, dodged: false });
+    enraged: false, inferno: 0, titan: 0, drive: null, yell: null, cutMark: null, dazed: 0, ccGuard: 0, stun: 0, stunned: false, stunFor: 0, poise: 0, flung: false, grounded: true, last: '', phase: 0, carveT: 0, chase: 0, hops: 0, poked: 0, pokeT: 0, guard: 0, dodged: false });
   waves = []; slides = []; rubble = []; flames = []; E.swing = 0;
 }
 E.max = 900;
 
 // windup (telegraph), active and recovery times for each move
 const MOVES = {
+  yell:    { wind: .15, act: .4, rest: .3,  label: 'YELL' },
+  car:     { wind: .8,  act: 3.5, rest: 1.2, label: 'CAR' },
   combo:  { wind: .28, act: .75, rest: .55, label: 'TWIN FANGS' },
   dash:   { wind: .5,  act: .35, rest: .6,  label: 'EMBER DASH' },
   wave:   { wind: .5,  act: .3,  rest: .45, label: 'CROSS FLARE' },
@@ -2872,7 +2987,7 @@ function damageEnemy(dmg) {
   }
   E.awake = true;
   const far = Math.hypot(E.x - P.x, E.y - P.y, E.z - P.z) > 9;
-  if (far && dmg < 40 && who !== 'shoot') {
+  if (far && dmg < 40 && who !== 'shoot' && foe !== 'civ') {
     if (E.guard > 0 || (E.poked >= 2 && E.state !== 'rest' && E.state !== 'act')) {
       if (E.guard <= 0) { E.guard = .7; E.poked = 0; say(foeName() + ' PARRIES', .8); startMove('blink'); }
       E.inv = .12;
@@ -2896,12 +3011,13 @@ function damageEnemy(dmg) {
     const d = Math.hypot(E.x - P.x, E.z - P.z) || 1;
     E.vx = (E.x - P.x) / d * 22; E.vz = (E.z - P.z) / d * 22; E.vy = 12;
   }
-  if (!E.enraged && E.hp < E.max / 2) { E.enraged = true; say(foeName() + ' IGNITES', 1.8); dust(E.x, E.y, E.z, 50, 22); cam.shake = 1; sfx(1, 700, .8); }
-  if (E.hp <= 0) {
-    E.hp = 0; E.dead = true; waves = []; say(foeName() + ' DEFEATED', 4); startTruce(true); popup.t = 1.5;
-    for (let i = 0; i < 90; i++) debris(E.x + rr(-1, 1), E.y + rr(0, 3), E.z + rr(-1, 1), rr(.2, .9), i % 3 ? [.12, .1, .1] : [1, .45, .1], rr(-18, 18), rr(2, 26), rr(-18, 18), rr(1.5, 4));
-    cam.shake = 1.6; hitStop = .2; sfx(1, 300, 1.4);
-  }
+  if (!E.enraged && E.hp < E.max / 2) { E.enraged = true; say(foeName() + (foe === 'civ' ? ' PANICS' : ' IGNITES'), 1.8); dust(E.x, E.y, E.z, 50, 22); cam.shake = 1; sfx(1, 700, .8); }
+  if (E.hp <= 0) enemyDown();
+}
+function enemyDown() {
+  E.hp = 0; E.dead = true; E.drive = E.yell = null; waves = []; say(foeName() + ' DEFEATED', 4); startTruce(true); popup.t = 1.5;
+  for (let i = 0; i < 90; i++) debris(E.x + rr(-1, 1), E.y + rr(0, 3), E.z + rr(-1, 1), rr(.2, .9), i % 3 ? [.12, .1, .1] : [1, .45, .1], rr(-18, 18), rr(2, 26), rr(-18, 18), rr(1.5, 4));
+  cam.shake = 1.6; hitStop = .2; sfx(1, 300, 1.4);
 }
 const foeName = () => ROSTER[foe].name + (foe === who ? ' (MIRROR)' : '');
 function strikeEnemy(x, y, z, r) {
@@ -2956,6 +3072,7 @@ function chooseMove() {
     brute:  [['leap', 'wave', 'leap'], ['combo', 'combo', 'combo', 'clap', 'leap'], ['dash', 'dash', 'clap', 'wave', 'leap'], ['dash', 'wave', 'leap', 'dash'], ['titan']],
     slash:  [['leap', 'wave', 'dash'], ['combo', 'combo', 'combo', 'rise'], ['dash', 'dash', 'wave', 'leap'], ['wave', 'dash', 'leap'], ['horizon']],
     shoot:  [['wave', 'wave', 'blink'], ['blast', 'blast', 'blink'], ['wave', 'wave', 'netshot', 'blast'], ['wave', 'wave', 'netshot'], ['rail']],
+    civ:    [['yell'], ['combo', 'combo', 'combo', 'yell'], ['yell'], ['yell'], ['car']],
     halo:   [['wave', 'dash', 'leap'], ['combo', 'combo', 'combo', 'clap', 'dash'], ['dash', 'wave', 'wave', 'leap', 'clap'], ['wave', 'dash', 'leap', 'blink'], ['sphere', 'sphere']],
   };
   const CLOSERS = { cinder: ['dash', 'leap', 'blink'], hero: ['dash', 'leap'], brute: ['dash', 'leap'], halo: ['dash', 'leap', 'blink'], slash: ['dash', 'leap'] };
@@ -3030,7 +3147,39 @@ function stepShots(dt) {
   }
 }
 
+function civRival(dt) {
+  const t = E.t, { flat } = toPlayer(), equal = who === 'civ';
+  // 1 point of my health unless I am a CIVILIANBOI too
+  const jab = pct => {
+    if (equal) { rawDamage = true; hurtPlayer(pct, E.x, E.z, pct > 8 ? 18 : 4); rawDamage = false; }
+    else if (truce.t <= 0 && !debug && !(P.iframe > 0) && !(P.dash > 0)) { P.hurtT = .12; loseHealth(100 / ROSTER[who].hp); }
+  };
+  if (E.move === 'combo') {
+    faceXZ(P.x, P.z);
+    const n = Math.min(2, t / .25 | 0);
+    E.vx = flat > 2 ? Math.sin(E.yaw) * 8 : 0; E.vz = flat > 2 ? Math.cos(E.yaw) * 8 : 0;
+    if (n >= E.hits && t % .25 > .1) { E.hits++; if (flat < 3.2 && Math.abs(P.y - E.y) < 3) jab(PUNCHES[n].pct); sfx(.2, 1500, .08); }
+  } else if (E.move === 'yell') {
+    E.vx = E.vz = 0;
+    if (!E.hits) { E.hits = 1; E.yell = newYell(E.yell); sfx(.8, 700, .3); }
+  } else if (E.move === 'car') {                              // drives where it aimed, steering only a little
+    E.drive = true;
+    E.yaw += clamp(Math.atan2(Math.sin(Math.atan2(P.x - E.x, P.z - E.z) - E.yaw), Math.cos(Math.atan2(P.x - E.x, P.z - E.z) - E.yaw)), -dt, dt);
+    E.vx = Math.sin(E.yaw) * 22; E.vz = Math.cos(E.yaw) * 22;
+    if (!E.hits && flat < 2.8 + ROSTER[who].size && Math.abs(P.y - E.y) < 2.5 && truce.t <= 0) {
+      E.hits = 1;
+      if (equal) { rawDamage = true; hurtPlayer(CAR_HIT, E.x, E.z, 34); rawDamage = false; }
+      else {                                                  // crashed into someone solid
+        E.hp -= E.max * CAR_HIT / 100; E.hurtT = .3; E.t = MOVES.car.act; E.drive = null;
+        dust(E.x, E.y + 1, E.z, 50, 18); cam.shake = 1; sfx(1, 350, .8); say(foeName() + ' CRASHED', 1.4);
+        if (E.hp <= 0) enemyDown();
+      }
+    }
+    if (E.t + dt >= MOVES.car.act) E.drive = null;
+  }
+}
 function activeMove(dt) {
+  if (foe === 'civ') return civRival(dt);
   const t = E.t, { flat, l } = toPlayer();
   const reach = (r, dmg, knock) => { if (Math.hypot(P.x - E.x, P.y - E.y, P.z - E.z) < r + pad(who)) hurtPlayer(dmg, E.x, E.z, knock); };
   if (E.move === 'combo') {                                 // three cuts, stepping in each time
@@ -3172,7 +3321,7 @@ function stepEnemy(dt) {
   if ((E.pokeT -= dt) <= 0) E.poked = 0;
   // sees a big attack winding up and gets out of the way, sometimes
   if (!P.cross && !P.storm) E.dodged = false;
-  else if (!E.dodged && E.awake && E.state === 'idle') { E.dodged = true; if (Math.random() < .55) startMove('blink'); }
+  else if (!E.dodged && E.awake && E.state === 'idle') { E.dodged = true; if (foe !== 'civ' && Math.random() < .55) startMove('blink'); }
 
   const { flat, l } = toPlayer();
   if (!E.awake) { if (l < 22) { E.awake = true; say(foeName(), 1.6); sfx(1, 600, .8); } return; }
@@ -3191,6 +3340,7 @@ function stepEnemy(dt) {
   const gripped = P.held?.type === 'rival' || P.cm?.carry;
   if (E.stunned && !gripped && (E.stunFor += dt) > 1.4) E.stun = 0;
   if (E.stunned && !(E.stun > 0)) { E.stunned = false; E.flung = false; E.poise = foe === 'brute' ? 2.5 : 1.7; }
+  if (E.stun > 0 || E.state !== 'act') E.drive = null;
   if (E.stun > 0) {                                         // knocked flying: no control
     E.stun -= dt; E.state = 'idle';
     if (E.flung && (E.grounded && E.vy <= 0 && E.stun < .9 || foe === 'brute' && E.stun <= 0 || hit(E.x - 1.2, E.y + .2, E.z - 1.2, E.x + 1.2, E.y + 2.6, E.z + 1.2))) {
@@ -3206,14 +3356,14 @@ function stepEnemy(dt) {
     const fx = Math.sin(E.yaw), fz = Math.cos(E.yaw);
     E.vx = (fx * toward + fz * circle) * speed; E.vz = (fz * toward - fx * circle) * speed;
     if (E.grounded) E.hops = 1;
-    if (P.y - E.y > 5 && (E.grounded || hunting && E.hops && E.vy < 4)) {       // jumps, and once more in mid air
+    if (foe !== 'civ' && P.y - E.y > 5 && (E.grounded || hunting && E.hops && E.vy < 4)) {       // jumps, and once more in mid air
       if (!E.grounded) { E.hops = 0; dust(E.x, E.y, E.z, 10, 8); }
       E.vy = clamp(Math.sqrt((P.y - E.y) * 90), 20, 60);
     }
     if ((E.cd -= dt * quick * (hunting ? 2 : 1)) <= 0) startMove(chooseMove());
   } else if (E.state === 'wind') {
     E.vx *= 1 - 8 * dt; E.vz *= 1 - 8 * dt;
-    if (!['dash', 'horizon', 'rail'].includes(E.move) || E.t < m.wind * (E.move === 'dash' ? .7 : .45) / quick) {    // aim locks just before he goes
+    if (!['dash', 'horizon', 'rail', 'car'].includes(E.move) || E.t < m.wind * (E.move === 'dash' ? .7 : .45) / quick) {    // aim locks just before he goes
       faceXZ(P.x, P.z);
       const lead = hunting ? .25 : 0, aim = [P.x + P.vx * lead, Math.max(0, P.y + P.vy * lead * .5), P.z + P.vz * lead];   // cuts off a runner
       const d = [aim[0] - E.x, aim[1] - E.y, aim[2] - E.z], n = Math.hypot(...d) || 1;
@@ -3241,8 +3391,8 @@ function stepEnemy(dt) {
   if (!flying) E.vy -= 45 * dt;
   const bx = enemyMove('x', E.vx * dt), bz = enemyMove('z', E.vz * dt);
   if ((bx || bz) && E.stun > 0) wreck(E.x + Math.sign(E.vx) * 1.5, E.y + 1.5, E.z + Math.sign(E.vz) * 1.5, 3.2);
-  if ((bx || bz) && E.state === 'idle' && !(E.stun > 0)) E.vy = Math.max(E.vy, 26);               // scales the building
-  if ((bx || bz) && E.state === 'act' && E.move !== 'leap') wreck(E.x + Math.sin(E.yaw) * 1.5, E.y + 1.5, E.z + Math.cos(E.yaw) * 1.5, 3);
+  if (foe !== 'civ' && (bx || bz) && E.state === 'idle' && !(E.stun > 0)) E.vy = Math.max(E.vy, 26);               // scales the building
+  if (foe !== 'civ' && (bx || bz) && E.state === 'act' && E.move !== 'leap') wreck(E.x + Math.sin(E.yaw) * 1.5, E.y + 1.5, E.z + Math.cos(E.yaw) * 1.5, 3);
   E.grounded = false;
   if (enemyMove('y', E.vy * dt)) { if (E.vy < 0) E.grounded = true; E.vy = 0; }
   if (E.y < 0) { E.y = 0; E.vy = 0; E.grounded = true; }
@@ -3666,6 +3816,7 @@ function drawGunnerPlayer(time) {
 }
 
 function drawModel(kind, v, time, mirror) {
+  if (kind === 'civ') return drawCiv({ ...v, punch: v.state === 'act' && v.move === 'combo' ? [Math.min(2, v.t / .25 | 0), v.t % .25] : null }, time);
   if (kind === 'shoot') return drawGunner({ ...v, gun: v.move === 'blast' && v.state !== 'idle' ? 1 : 0, move: v.state === 'wind' || v.state === 'act' ? v.move : '', t: v.t * 2, railBeam: v.railBeam }, time);
   if (kind === 'slash') return drawGal(v, time);
   if (kind === 'cinder') return drawKnight(v, time, v.x, v.y, v.z, mirror ? FROST : FIRE);
@@ -3678,7 +3829,7 @@ function drawStars(x, y, z, time) {
 }
 function drawEnemy(time, alpha) {
   if (remoteDrawing) return;
-  const top = { hero: 2.7, cinder: 3.9, brute: 4.7, halo: 3.3, slash: 3.3, shoot: 3.2 };
+  const top = { civ: 2.4, hero: 2.7, cinder: 3.9, brute: 4.7, halo: 3.3, slash: 3.3, shoot: 3.2 };
   if (!E.dead && E.dazed > 0) drawStars(E.x, E.y + top[foe], E.z, time);
   if (P.stunT > 0) drawStars(P.x, P.y + top[who], P.z, time);
   if (pvp) return drawRemote(time);
@@ -3900,7 +4051,7 @@ function drawCinderPlayer(time) {
 
 // the glowing line Horizon Cut leaves across whoever it caught, fading
 function drawCutMarks(time) {
-  const tall = { hero: 2.4, cinder: 3.4, brute: 4, halo: 2.8, slash: 2.8, shoot: 2.7 };
+  const tall = { civ: 2, hero: 2.4, cinder: 3.4, brute: 4, halo: 2.8, slash: 2.8, shoot: 2.7 };
   for (const [o, k] of [[P, who], [E, foe]]) {
     const c = o.cutMark;
     if (!c || o === E && E.dead) continue;
@@ -3970,6 +4121,30 @@ function drawEnemyEffects(time) {
     const a = E.yaw + (i % 2) * Math.PI - (i >> 1) * .2;
     push(E.x + Math.sin(a) * 3.8, E.y + 2, E.z + Math.cos(a) * 3.8, 3, .8, .16 * (1 - i / 18), .1, a, EMBER);
   }
+}
+
+const CIV_CAR = [.9, .65, .05];
+// CIVILIANBOI, on foot or in the car
+function drawCiv(v, time) {
+  const sy = Math.sin(v.yaw), cy = Math.cos(v.yaw), look = v.look || [1, 0];
+  const part = (side, up, fwd, w, h, d, col, pitch = 0, m = 0) => push(v.x + side * cy + fwd * sy, v.y + up, v.z - side * sy + fwd * cy, m, w, h, d, v.yaw, col, pitch);
+  const shirt = SHIRTS[look[0]] || SHIRTS[1], skin = SKINS[look[1]] || SKINS[0];
+  if (v.drive) {
+    part(0, .8, 0, 2.1, .7, 4.4, CIV_CAR); part(0, 1.3, .9, 1.9, .5, .1, GLASS); part(0, 1.2, -1.6, 2, .1, 1.2, CIV_CAR);
+    part(0, .38, 1.45, 2.3, .72, .8, TYRE); part(0, .38, -1.45, 2.3, .72, .8, TYRE);
+    part(0, .85, 2.21, 1.7, .2, .06, LAMP, 0, 3); part(0, .85, -2.21, 1.7, .2, .06, TAIL, 0, 3);
+    part(0, 1.4, -.3, .52, .6, .3, shirt); part(0, 1.88, -.3, .32, .34, .32, skin);      // him, at the wheel of an open top
+    return;
+  }
+  const speed = Math.hypot(v.vx || 0, v.vz || 0), run = speed > 8;
+  const swing = v.grounded === false ? .5 : speed > .5 ? Math.sin(v.phase * 5) * (run ? .9 : .45) : 0;
+  let punch = null;
+  if (v.punch) { const [n, t] = v.punch, out = Math.sin(clamp(t / PUNCH_TIME, 0, 1) * Math.PI); punch = [n % 2 ? 1 : -1, out, n === 3 ? out * .9 : 0]; }
+  person(part, shirt, skin, swing, run, true, punch);
+}
+function drawCivPlayer(time) {
+  drawCiv({ x: P.x, y: P.y, z: P.z, yaw: P.yaw, vx: P.vx, vz: P.vz, phase: P.phase, grounded: P.grounded, look: P.look, drive: P.drive,
+    punch: P.cm?.name === 'punch' ? [P.cm.n, P.cm.t] : null }, time);
 }
 
 // ───────────────────────── street life: traffic and civilians ─────────────────────────
@@ -4191,15 +4366,21 @@ function buildLife() {
     }
     if (p.held || p.flung) { part(0, .2, 0, .55, .32, 1.1, p.shirt); part(0, .2, .75, .34, .3, .34, p.skin); part(0, .16, -.85, .42, .24, .75, TROUSERS); continue; }
     const run = p.panic > 0, swing = Math.sin(p.step) * (run ? .9 : .45);
-    if (far < 80) for (const side of [-.13, .13]) {
-      const a = side < 0 ? swing : -swing;
-      part(side, .75 - Math.cos(a) * .37, -Math.sin(a) * .37, .2, .75, .22, TROUSERS, a);
-      const arm = run ? -2.7 + a * .3 : -a * .7;              // arms in the air when fleeing
-      part(side * 2.6, 1.42 - Math.cos(arm) * .3, -Math.sin(arm) * .3, .13, .6, .14, p.shirt, arm);
-    } else part(0, .37, 0, .4, .74, .24, TROUSERS);
-    part(0, 1.12, 0, .52, .74, .3, p.shirt);
-    part(0, 1.66, 0, .32, .34, .32, p.skin);
+    person(part, p.shirt, p.skin, swing, run, far < 80);
   }
+}
+// a person standing up; punch = [arm side, how far out, how high]
+function person(part, shirt, skin, swing, run, limbs, punch) {
+  if (limbs) for (const side of [-.13, .13]) {
+    const a = side < 0 ? swing : -swing;
+    part(side, .75 - Math.cos(a) * .37, -Math.sin(a) * .37, .2, .75, .22, TROUSERS, a);
+    let arm = run ? -2.7 + a * .3 : -a * .7;                  // arms in the air when fleeing
+    if (punch) arm = Math.sign(side) === punch[0] ? -1.1 - punch[1] * .47 - punch[2] : -1.2;
+    part(side * 2.6, 1.42 - Math.cos(arm) * .3, -Math.sin(arm) * .3, .13, .6, .14, shirt, arm);
+    if (punch) part(side * 2.6, 1.42 - Math.cos(arm) * .62, -Math.sin(arm) * .62, .16, .16, .16, skin, arm);
+  } else part(0, .37, 0, .4, .74, .24, TROUSERS);
+  part(0, 1.12, 0, .52, .74, .3, shirt);
+  part(0, 1.66, 0, .32, .34, .32, skin);
 }
 
 // ───────────────────────── audio (synthesised) ─────────────────────────
@@ -4573,7 +4754,7 @@ function buildScene(time) {
     return;
   }
   if (who !== 'hero') {
-    if (who === 'cinder') drawCinderPlayer(time); else if (who === 'slash') drawGalPlayer(time); else if (who === 'shoot') drawGunnerPlayer(time); else if (who === 'halo') drawHaloPlayer(time); else drawBrutePlayer(time);
+    if (who === 'civ') drawCivPlayer(time); else if (who === 'cinder') drawCinderPlayer(time); else if (who === 'slash') drawGalPlayer(time); else if (who === 'shoot') drawGunnerPlayer(time); else if (who === 'halo') drawHaloPlayer(time); else drawBrutePlayer(time);
     for (const t of thrown) push(t.p[0], t.p[1], t.p[2], 0, 2.6, 2.2, 2.6, t.spin * .7, t.color, t.spin);
     if (P.held?.type === 'rock') push(...holdPoint(), 0, 2.8, 2.3, 2.7, P.yaw, P.held.color);
     drawEnemy(time, drawAlpha); drawEnemyEffects(time); return;
@@ -4709,7 +4890,7 @@ function setView(eye, f, roll, fov, time, aspect, focus) {
 }
 // frame a fighter so he stands at screen position ndc (-1 left … 1 right)
 function previewCamera(time, aspect) {
-  const [d, mid] = { hero: [5.4, 1.2], cinder: [8.2, 1.85], brute: [11.6, 1.9], halo: [7.8, 1.7], slash: [8.2, 1.4], shoot: [6, 1.3] }[preview.kind], fov = 42;
+  const [d, mid] = { civ: [8.2, 1.4], hero: [5.4, 1.2], cinder: [8.2, 1.85], brute: [11.6, 1.9], halo: [7.8, 1.7], slash: [8.2, 1.4], shoot: [6, 1.3] }[preview.kind], fov = 42;
   const f = norm([0, -.04, 1]), r = norm(cross(f, [0, 1, 0])), side = preview.ndc * d * Math.tan(fov * Math.PI / 360) * aspect;
   setView([0, 1, 2].map(i => [0, mid, 0][i] - f[i] * d - r[i] * side), f, 0, fov, time, aspect, [0, 0, 0]);
 }
@@ -4973,8 +5154,8 @@ let dusk = 0;
 const ULT_MOVES = new Set(['inferno', 'titan', 'ragdoll', 'flare', 'horizon', 'sphere', 'rail']);
 function render(dt, time, alpha = 1) {
   // any ultimate darkens the world: mine, the computer's, or the other player's
-  const ulting = s => !!s && (ULT_MOVES.has(s.cm?.name) || !!s.storm || !!s.rail || s.inferno > 0 || s.titan > 0);
-  const cutting = ulting(P) || ulting(pvp?.state?.s) || !E.dead && (ULT_MOVES.has(E.move) && (E.state === 'wind' || E.state === 'act') || E.inferno > 0 || E.titan > 0);
+  const ulting = s => !!s && (ULT_MOVES.has(s.cm?.name) || !!s.storm || !!s.rail || !!s.drive || s.inferno > 0 || s.titan > 0);
+  const cutting = ulting(P) || ulting(pvp?.state?.s) || !E.dead && (ULT_MOVES.has(E.move) && (E.state === 'wind' || E.state === 'act') || E.inferno > 0 || E.titan > 0 || !!E.drive);
   dusk = preview ? 0 : dusk + ((cutting ? 1 : 0) - dusk) * Math.min(1, dt * (cutting ? 7 : 2));
   fxDt = dt;
   drawAlpha = alpha;
@@ -5026,12 +5207,12 @@ function render(dt, time, alpha = 1) {
 // ───────────────────────── events + loop ─────────────────────────
 const locked = () => document.pointerLockElement === canvas;
 // ───────────────────────── online 1v1 (WebRTC, peer to peer) ─────────────────────────
-const PROTO = 15;
+const PROTO = 16;
 const PEER_LIB = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';   // only loaded when you go online
 const LOCAL_NET = new URLSearchParams(location.search).get('net') === 'local';   // two tabs on one computer, for testing
 // the parts of a fighter the other side needs in order to draw them
 const SHARED = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'yaw', 'phase', 'grounded', 'h', 'wall', 'charge', 'glide', 'dive', 'dash', 'slide', 'mantle', 'kick', 'meteor', 'orbit',
-  'chain', 'storm', 'cross', 'guill', 'whirl', 'act', 'punch', 'slashT', 'slashSide', 'carving', 'holding', 'lash', 'reel', 'spin', 'cm', 'leapCharge', 'leaping', 'flying', 'beam', 'reelBlock', 'rail', 'railBeam', 'inferno', 'titan', 'hurtT', 'style', 'hp', 'pad', 'trap', 'gun', 'shield'];
+  'chain', 'storm', 'cross', 'guill', 'whirl', 'act', 'punch', 'slashT', 'slashSide', 'carving', 'holding', 'lash', 'reel', 'spin', 'cm', 'leapCharge', 'leaping', 'flying', 'beam', 'reelBlock', 'rail', 'railBeam', 'drive', 'yell', 'look', 'inferno', 'titan', 'hurtT', 'style', 'hp', 'pad', 'trap', 'gun', 'shield'];
 let link = null, netStatus = '', joinCode = '';
 function setStatus(text) { netStatus = text; const el = $('netstatus'); if (el) el.textContent = text; }
 const netSend = msg => { try { link?.send(msg); } catch {} };
@@ -5125,7 +5306,7 @@ function pvpSpawn() {
   const z = pvp.hosting ? 0 : 36, yaw = pvp.hosting ? 0 : Math.PI;
   Object.assign(P, { x: 0, y: 0, z, px: 0, py: 0, pz: z, vx: 0, vy: 0, vz: 0, yaw, hp: 100, iframe: 2, style: 0, flying: false, held: null, shield: 0, calm: 0, holding: null, chain: null, cm: null, cds: {}, sun: 100, heat: 0, empower: 0, vent: 0, burn: null });
   cam.yaw = yaw; pvp.pin = null;
-  Object.assign(P, { style: perk('kindle') ? 35 : 0, shield: perk('field') ? 20 : 0, dashes: maxDashes(), ammo: maxAmmo(), reload: 0 });
+  Object.assign(P, { style: perk('kindle') ? 35 : 0, shield: perk('field') ? 20 : 0, dashes: maxDashes(), ammo: maxAmmo(), reload: 0, drive: null, yell: null });
   Object.assign(E, { x: 0, y: 0, z: 36 - z, px: 0, py: 0, pz: 36 - z, dead: false, awake: true, state: 'idle', hp: E.max });
   startTruce(false);
 }
@@ -5184,6 +5365,13 @@ function onNet(m) {
     const was = pvp.pin;
     pvp.pin = g ? { x: num(g.x, -400, 400), y: num(g.y, 0, 300), z: num(g.z, -400, 400), swing: num(g.swing, -3, 3) } : null;
     if (was && !pvp.pin) { P.vy = 14; P.iframe = Math.max(P.iframe, .3); }
+  } else if (m.t === 'hit' && (m.hp || m.pct)) {
+    if (foe !== 'civ') return;
+    if (m.pct) {                                             // CIVILIANBOI against CIVILIANBOI
+      rawDamage = true; hurtPlayer(num(m.pct, 0, CAR_HIT), num(m.x, -400, 400), num(m.z, -400, 400), num(m.k, 0, 40)); rawDamage = false;
+    } else if (truce.t <= 0 && !(P.iframe > 0)) {             // 1 point: no flinch, and no free invulnerability from it
+      P.hurtT = .12; loseHealth(num(m.hp, 0, 1) * 100 / (ROSTER[who].netHp || ROSTER[who].hp));
+    }
   } else if (m.t === 'hit') {
     // the attacker's strength against my toughness, as a share of my health bar
     const loss = num(m.d, 0, 220) * ROSTER[who].armor * 400 / (ROSTER[who].netHp || ROSTER[who].hp);
@@ -5263,6 +5451,7 @@ function showThrows(list) {
 
 // 3. call out the big moves, so there is a moment to get out of the way
 const CALLS = {
+  civ: { drive: 'CAR' },
   hero: { cross: 'CROSSFALL', meteor: 'METEOR DROP', storm: 'REAPER SPHERE', whirl: 'WRECKING BALL', orbit: 'ORBIT', spin: 'CYCLONE' },
   cinder: { whirl: 'FIRE WHEEL', dash: 'EMBER DASH', leap: 'COMET CLEAVE', wave: 'CROSS FLARE', rise: 'PHOENIX RISE', inferno: 'INFERNO' },
   brute: { brace: 'BRACE', charge: 'TAIL WHACK', dash: 'BULL RUSH', rip: 'LANDSLIDE', slam: 'LANDSLIDE', clap: 'THUNDERCLAP', kickwind: 'TITAN KICK', titan: 'TITAN FORM', ragdoll: 'RAGDOLL' },
@@ -5270,7 +5459,7 @@ const CALLS = {
   shoot: { roll: 'RELOAD ROLL', rail: 'RAILGUN' },
   slash: { stab: 'PIERCING STAB', dash: 'AIR DASH CUT', split: 'SKYSPLITTER', wave: 'SWORD WAVE', rise: 'RISING CUT', parry: 'PARRY', horizon: 'HORIZON CUT' },
 };
-const ULTS = ['storm', 'inferno', 'titan', 'ragdoll', 'flare', 'horizon', 'rail'];
+const ULTS = ['storm', 'inferno', 'titan', 'ragdoll', 'flare', 'horizon', 'rail', 'drive'];
 function callOut(st) {
   const names = CALLS[foe];
   const now = st.cm && names[st.cm.name] ? st.cm.name : Object.keys(names).find(k => k !== 'dash' && k !== 'leap' && st[k]) || '';
@@ -5377,7 +5566,7 @@ function helpHTML() {
   const line = (k, t) => k.padEnd(13) + t + '\n';
   let h = '<b>' + ROSTER[who].name + '</b>   Esc: pause\n';
   h += line(['KeyW', 'KeyA', 'KeyS', 'KeyD'].map(bound).join(' '), 'move');
-  for (const a of ['ShiftLeft', 'Space', 'KeyC', 'KeyE']) h += line(bound(a), (who === 'halo' ? { ShiftLeft: 'boost', Space: 'fly / rise', KeyC: 'descend / land', KeyE: 'dash' } : { ShiftLeft: 'sprint', Space: 'jump / glide', KeyC: 'slide', KeyE: 'dash' })[a]);
+  for (const a of who === 'civ' ? ['Space'] : ['ShiftLeft', 'Space', 'KeyC', 'KeyE']) h += line(bound(a), (who === 'halo' ? { ShiftLeft: 'boost', Space: 'fly / rise', KeyC: 'descend / land', KeyE: 'dash' } : { ShiftLeft: 'sprint', Space: who === 'civ' ? 'jump' : 'jump / glide', KeyC: 'slide', KeyE: 'dash' })[a]);
   h += '\n';
   for (const [a, name] of ROSTER[who].moves) h += line(bound(a), name);
   return h;
@@ -5447,10 +5636,11 @@ const SCREENS = {
   exit: () => `<div class="pane center"><h2>GOODBYE</h2><p>Your browser does not let a page close a tab you opened yourself. You can close this tab now.</p>${btn('◂ Back to the menu', 'main')}</div>`,
 };
 function show(name) {
+  const same = screen === name;
   screen = name;
   const menu = $('menu'), keep = menu.querySelector('.pane')?.scrollTop;
   menu.innerHTML = name ? SCREENS[name]() : '';
-  if (name === 'keys' && keep) menu.querySelector('.pane').scrollTop = keep;
+  if (same && keep) menu.querySelector('.pane').scrollTop = keep;             // picking a card must not jump to the top
   document.body.classList.toggle('inmenu', mode === 'menu');
   // which fighter stands behind this screen
   preview = mode !== 'menu' ? null : name === 'who' ? { kind: pickWho, ndc: -.08 } : name === 'foe' ? { kind: pickFoe, ndc: -.08 } : { kind: pickWho, ndc: .4 };
@@ -5460,6 +5650,7 @@ function show(name) {
 function setMatch(a, b) {
   who = a; foe = b; preview = null;
   resetWorld(); waves = [];
+  P.look = randomLook(); E.look = randomLook();
   $('help').innerHTML = helpHTML();
 }
 function pause() {
@@ -5638,6 +5829,16 @@ show('main');
 window.started = true;
 let last = performance.now(), acc = 0, time = 0, frames = 0, statT = 0;
 let due = 0, aimT = 0;
+// a speech bubble over a head: the world point, put through the camera matrix
+function bubble(el, yell, x, y, z) {
+  const text = yell && CUSSES[yell.i], m = ubo;
+  const w = m[3] * x + m[7] * y + m[11] * z + m[15];
+  if (!text || !(w > 0)) { if (el.style.display) el.style.display = ''; return; }
+  el.textContent = text; el.style.display = 'block';
+  el.style.left = ((m[0] * x + m[4] * y + m[8] * z + m[12]) / w * .5 + .5) * innerWidth + 'px';
+  el.style.top = (.5 - (m[1] * x + m[5] * y + m[9] * z + m[13]) / w * .5) * innerHeight + 'px';
+}
+const bubbles = document.getElementsByClassName('bubble');
 function frame(now) {
   if (cap60) {
     if (now < due - 3) { requestAnimationFrame(frame); return; }
@@ -5660,6 +5861,8 @@ function frame(now) {
   }
   render(playing || mode === 'menu' ? dt : 0, time, playing ? acc / STEP : 1);
   $('style').firstChild.style.width = P.style + '%';
+  bubble(bubbles[0], P.yell, P.x, P.y + (P.drive ? 2.5 : 2.3), P.z);
+  bubble(bubbles[1], E.dead ? null : pvp ? pvp.state?.s?.yell : E.yell, E.x, E.y + (E.drive || pvp?.state?.s?.drive ? 2.5 : 2.3), E.z);
   $('meter').style.display = who === 'halo' || who === 'cinder' ? '' : 'none';
   $('meter').firstChild.style.width = (who === 'halo' ? P.sun : P.empower > 0 ? 100 : P.heat) + '%';
   $('meter').firstChild.style.background = who === 'halo' ? (P.sun < 25 ? '#c96a20' : '#ffd23a') : P.empower > 0 ? '#fff0b0' : '#ff5a1f';
@@ -5669,7 +5872,7 @@ function frame(now) {
   $('pop').className = popup.gold ? 'gold' : '';
   const away = Math.hypot(E.x - P.x, E.z - P.z);
   $('boss').style.display = E.dead ? 'none' : 'block';
-  const tone = foe === who || foe === 'hero' ? '#3fa0ff' : foe === 'brute' ? '#d8523a' : foe === 'halo' ? '#f2c53d' : foe === 'slash' ? '#e0305a' : foe === 'shoot' ? '#14b8a6' : '#ff5a1f';
+  const tone = foe === who || foe === 'hero' ? '#3fa0ff' : foe === 'brute' ? '#d8523a' : foe === 'halo' ? '#f2c53d' : foe === 'slash' ? '#e0305a' : foe === 'shoot' ? '#14b8a6' : foe === 'civ' ? '#c9c9c9' : '#ff5a1f';
   $('boss').style.color = '#ffe0d0';
   $('boss').children[1].firstChild.style.background = tone;
   $('boss').children[0].textContent = (pvp ? 'OPPONENT · ' + ROSTER[foe].name + ' · ' + pvp.mine + '-' + pvp.theirs + ' · ' + pvp.ping + ' ms' : foeName()) + (E.awake ? '' : ' (waiting)') + '  ·  ' + away.toFixed(0) + ' m';
