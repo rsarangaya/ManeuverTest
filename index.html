@@ -30,13 +30,15 @@
   #boss i,#hp i{display:block;height:100%;border-radius:5px}
   #boss i{background:#ff5a1f}
   #score{position:fixed;left:50%;top:44px;transform:translateX(-50%);display:none;white-space:nowrap;padding:4px 16px;border-radius:8px;background:#000b;font:800 20px/1.3 system-ui,sans-serif;letter-spacing:2px;color:#fff;pointer-events:none}
+  #winner{position:fixed;left:50%;top:92px;transform:translateX(-50%);display:none;white-space:nowrap;text-align:center;padding:10px 34px;border-radius:12px;background:#000b;color:#ffd25a;font:900 40px/1.25 system-ui,sans-serif;letter-spacing:4px;pointer-events:none}
+  #winner small{display:block;font-size:22px;color:#fff}
   #score b{color:#5fd4ff;margin:0 8px} #score em{color:#ff8a5f;margin:0 8px;font-style:normal}
   #hp{position:fixed;left:16px;bottom:22px;width:220px;height:12px;border:1px solid #fff7;border-radius:6px;background:#0008}
   #hp i{background:#5fe39a}
   #blind{position:fixed;inset:0;pointer-events:none;opacity:0;background:#fff}
   #cross.scoped{width:5px;height:5px;margin:-2.5px;background:#f33;opacity:1;outline:2px solid #fffc;outline-offset:44px}
   #hurt{position:fixed;inset:0;pointer-events:none;opacity:0;box-shadow:inset 0 0 140px 40px #d1200f}
-  body.inmenu #help,body.inmenu #stats,body.inmenu #cross,body.inmenu #bar,body.inmenu #style,body.inmenu #meter,body.inmenu #pop,body.inmenu #boss,body.inmenu #score,body.inmenu #hp,body.inmenu #hurt,body.inmenu #msg,body.inmenu .bubble{display:none!important}
+  body.inmenu #help,body.inmenu #stats,body.inmenu #cross,body.inmenu #bar,body.inmenu #style,body.inmenu #meter,body.inmenu #pop,body.inmenu #boss,body.inmenu #score,body.inmenu #winner,body.inmenu #hp,body.inmenu #hurt,body.inmenu #msg,body.inmenu .bubble{display:none!important}
   #menu{position:fixed;inset:0;z-index:5;pointer-events:none;font-size:14px}
   #menu *{box-sizing:border-box}
   .pane{position:absolute;pointer-events:auto;background:#0a0f1ee6;border:1px solid #6fb7ff33;border-radius:12px;padding:18px;overflow:auto}
@@ -85,6 +87,7 @@
 <div id="pop"></div>
 <div id="boss"><span></span><div><i></i></div></div>
 <div id="score"></div>
+<div id="winner"></div>
 <div id="hp"><i></i></div>
 <div id="hurt"></div>
 <div id="blind"></div>
@@ -333,7 +336,7 @@ const cam = { yaw: .7, pitch: -.05, dist: 10, shake: 0, fov: 70, pos: [0, 5, -10
 const P = {};
 function resetPlayer() {
   Object.assign(P, { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: .7, grounded: true, wall: null,
-    charge: -1, airJumps: 1, dashes: 2, dash: 0, dashDir: [0,0,1], act: null, cm: null, leapCharge: -1, leaping: false, rushCd: 0, cds: {}, sun: 100, heat: 0, heatT: 0, empower: 0, vent: 0, burn: null, stunT: 0, ccGuard: 0, parryCd: 0, juggle: 0, cuts: 2, ammo: 12, gun: 0, scope: false, reload: 0, burst: 0, burstT: 0, pumpCd: 0, padCd: 0, trapCd: 0, netCd: 0, flashCd: 0, ricCd: 0, rollCd: 0, pad: null, trap: null, blindT: 0, ultLock: 0, cooled: true, held: null, flying: false, beam: null, swings: 0, hp: 100, iframe: 0, hurtT: 0, style: 0, zipT: 0, atkBuf: 0, hold: 0, cross: null, crossUsed: false, spin: null, chainHits: 0, lastHit: -9, storm: null, meteor: null, guill: null, kick: null, orbit: null, rail: null, railBeam: null, clones: [], drive: null, yell: null, inferno: 0, titan: 0, cutMark: null,
+    charge: -1, airJumps: 1, dashes: 2, dash: 0, dashDir: [0,0,1], act: null, cm: null, leapCharge: -1, leaping: false, rushCd: 0, cds: {}, sun: 100, heat: 0, heatT: 0, empower: 0, vent: 0, burn: null, stunT: 0, ccGuard: 0, parryCd: 0, juggle: 0, cuts: 2, ammo: 12, gun: 0, scope: false, reload: 0, burst: 0, burstT: 0, pumpCd: 0, padCd: 0, trapCd: 0, netCd: 0, flashCd: 0, ricCd: 0, rollCd: 0, pad: null, trap: null, blindT: 0, ultLock: 0, cooled: true, held: null, flying: false, beam: null, swings: 0, hp: 100, iframe: 0, hurtT: 0, style: 0, zipT: 0, atkBuf: 0, hold: 0, cross: null, crossUsed: false, spin: null, chainHits: 0, lastHit: -9, storm: null, meteor: null, guill: null, kick: null, orbit: null, death: null, rail: null, railBeam: null, clones: [], drive: null, yell: null, inferno: 0, titan: 0, cutMark: null,
     reelBlock: null, whirl: null, carving: null, wasCarving: false, carveY: undefined, slashSide: 1, glide: false, dive: false, peak: 0,
     punch: 0, cool: 0, phase: 0, holding: null, coyote: 0, wallLock: 0, spaceAir: 0,
     h: 2, slide: false, slideCd: 0, shield: 0, calm: 0, mantle: null, jumpBuf: 0, landT: 1, airPress: false, px: 0, py: 0, pz: 0, chain: null, lash: null, reel: null, slashT: 0 });
@@ -577,6 +580,9 @@ const spendUlt = () => { P.style = 0; P.ultLock = ULT_LOCK; P.ultLeft = ULT_CAP;
 // online an ultimate takes at most ULT_CAP % of their health bar, however many of its blows land
 const ULT_CAP = 60;
 function ultHit(dmg) {
+  ultBlow = true; ultStrike(dmg); ultBlow = false;
+}
+function ultStrike(dmg) {
   if (!pvp) return damageEnemy(dmg);
   if (E.dead || E.inv > 0 || truce.t > 0) return;
   const per = netDeal(who) * heatBoost() * damagePerk() * ROSTER[foe].armor * 400 / (ROSTER[foe].netHp || ROSTER[foe].hp);
@@ -1286,7 +1292,7 @@ function civStrike(pct, knock) {
   if (E.dead || E.inv > 0 || truce.t > 0) return false;
   const equal = foe === 'civ';
   E.inv = .1; E.hurtT = .18;
-  if (pvp) netSend(equal ? { t: 'hit', pct, k: knock, x: P.x, z: P.z } : { t: 'hit', hp: 1, x: P.x, z: P.z });
+  if (pvp) netSend(equal ? { t: 'hit', u: P.drive ? 1 : undefined, pct, k: knock, x: P.x, z: P.z } : { t: 'hit', hp: 1, x: P.x, z: P.z });
   else {
     E.awake = true; E.hp -= equal ? pct / 100 * E.max : 1;
     if (equal && knock) { const d = Math.hypot(E.x - P.x, E.z - P.z) || 1; E.vx = (E.x - P.x) / d * knock; E.vz = (E.z - P.z) / d * knock; E.vy = 8; E.stun = .3; }
@@ -1325,7 +1331,7 @@ function endDrive(crashed) {
 // health gone without a hit landing: his crash, and 1-point punches
 function loseHealth(pct) {
   if (debug || (P.hp -= pct) > 0) return;
-  if (pvp) pvpDown(); else { P.hp = 1; say('YOU FELL', 2); startTruce(true); popup.t = 1.5; }
+  playerDown();
 }
 function stepYell(o, dt) { if (o.yell && (o.yell.t -= dt) <= 0) o.yell = null; }
 function civMove(dt) {
@@ -2713,6 +2719,11 @@ function stepPlayer(dt) {
     if (!moveAxis('y', -14 * dt)) P.grounded = false;
     pressed.clear(); released.clear(); return;
   }
+  if (P.death) {                                             // down: no controls, the world carries on
+    P.vx = P.vz = 0; P.vy = Math.max(P.vy - 38 * dt, -60); pressed.clear(); released.clear();
+    if (moveAxis('y', P.vy * dt)) P.vy = 0;
+    stepFallers(dt); stepEnemy(dt); return;
+  }
   if (pvp?.pin) {
     const p = pvp.pin;
     Object.assign(P, { x: p.x, y: p.y, z: p.z, vx: 0, vy: 0, vz: 0, grounded: false, cm: null, act: null, chain: null, cross: null, spin: null, held: null, wall: null });
@@ -2924,6 +2935,7 @@ function stepThrown(dt) {
 
 function step(dt) {
   stepTruce(dt);
+  for (const o of [P, E]) if (o.death) o.death.t += dt;
   P.px = P.x; P.py = P.y; P.pz = P.z;   // for render interpolation
   fxLog = pvp ? pvp.fx : null;                              // note my particles for the opponent
   stepPlayer(dt);
@@ -3099,7 +3111,7 @@ function resetEnemy() {
   E.max = ROSTER[foe].hp;
   Object.assign(E, { x: HOME[0], y: HOME[1], z: HOME[2], px: HOME[0], py: HOME[1], pz: HOME[2], vx: 0, vy: 0, vz: 0, yaw: Math.PI,
     hp: E.max, awake: false, dead: false, state: 'idle', t: 0, cd: 1, hurtT: 0, inv: 0, hits: 0, target: [0, 0, 0], dir: [0, 0, 1],
-    enraged: false, inferno: 0, titan: 0, clones: [], drive: null, yell: null, cutMark: null, dazed: 0, ccGuard: 0, stun: 0, stunned: false, stunFor: 0, poise: 0, flung: false, grounded: true, last: '', phase: 0, carveT: 0, chase: 0, hops: 0, poked: 0, pokeT: 0, guard: 0, dodged: false });
+    death: null, enraged: false, inferno: 0, titan: 0, clones: [], drive: null, yell: null, cutMark: null, dazed: 0, ccGuard: 0, stun: 0, stunned: false, stunFor: 0, poise: 0, flung: false, grounded: true, last: '', phase: 0, carveT: 0, chase: 0, hops: 0, poked: 0, pokeT: 0, guard: 0, dodged: false });
   waves = []; slides = []; rubble = []; flames = []; E.swing = 0;
 }
 E.max = 900;
@@ -3155,7 +3167,7 @@ function damageEnemy(dmg) {
     const sent = dmg * netDeal(who) * heatBoost() * damagePerk();
     if (perk('thirst')) P.hp = Math.min(100, P.hp + .2 * sent * ROSTER[foe].armor * 400 / (ROSTER[foe].netHp || ROSTER[foe].hp));
     buildHeat(dmg); infernoBurst(dmg);
-    netSend({ t: 'hit', d: sent, x: P.x, z: P.z, r: hitGapKind(dmg), k: still || soft ? 0 : undefined, c: still ? 1 : undefined });
+    netSend({ t: 'hit', u: myBlow() ? 1 : undefined, d: sent, x: P.x, z: P.z, r: hitGapKind(dmg), k: still || soft ? 0 : undefined, c: still ? 1 : undefined });
     chargeUlt(sent * ROSTER[foe].armor * 400 / (ROSTER[foe].netHp || ROSTER[foe].hp));
     for (let i = 0; i < 10; i++) debris(E.x, E.y + 1.6, E.z, rr(.1, .28), [1, .5, .15], rr(-14, 14), rr(0, 14), rr(-14, 14), rr(.2, .6));
     hitStop = Math.max(hitStop, .02); sfx(.6, 1800, .12);
@@ -3191,9 +3203,27 @@ function damageEnemy(dmg) {
   if (E.hp <= 0) enemyDown();
 }
 function enemyDown() {
-  E.hp = 0; E.dead = true; E.drive = E.yell = null; E.clones.length = 0; waves = []; say(foeName() + ' DEFEATED', 4); startTruce(true); popup.t = 1.5;
-  for (let i = 0; i < 90; i++) debris(E.x + rr(-1, 1), E.y + rr(0, 3), E.z + rr(-1, 1), rr(.2, .9), i % 3 ? [.12, .1, .1] : [1, .45, .1], rr(-18, 18), rr(2, 26), rr(-18, 18), rr(1.5, 4));
-  cam.shake = 1.6; hitStop = .2; sfx(1, 300, 1.4);
+  E.hp = 0; E.dead = true; E.drive = E.yell = null; waves = []; tally.mine++; die(E, myBlow(), P); startTruce(true); popup.t = 0;
+}
+const tally = { mine: 0, theirs: 0 };      // rounds against the computer; online keeps its own
+// whose ultimate is behind a blow, if any: that decides how the loser goes
+let ultBlow = false, byUlt = false;
+const myBlow = () => ultBlow || P.inferno > 0 || P.titan > 0 || P.drive ? who : null;
+const foeUlting = () => E.inferno > 0 || E.titan > 0 || !!E.drive || E.state !== 'idle' && ['sphere', 'horizon', 'rail', 'tempest', 'car'].includes(E.move) || waves.some(w => !w.mine && (w.kind === 'tempest' || w.kind === 'burst'));
+// o falls: kind is the fighter whose ultimate did it, or null for an ordinary knockout
+function die(o, kind, killer) {
+  o.death = { kind, t: 0 };
+  o.yaw = Math.atan2(killer.x - o.x, killer.z - o.z);          // turned to whoever did it, so they go down backwards
+  o.clones.length = 0; o.drive = o.cm = null; o.swing = 0;
+  if (o === E) Object.assign(E, { state: 'idle', vx: 0, vz: 0, stun: 0, px: E.x, py: E.y, pz: E.z });
+  else Object.assign(P, { vx: 0, vz: 0, dash: 0, chain: null, cross: null, spin: null, storm: null, held: null, wall: null, act: null, flying: false, rail: null, inferno: 0, titan: 0, scope: false });
+  dust(o.x, o.y + 1, o.z, 16, 8); cam.shake = Math.max(cam.shake, 1); hitStop = Math.max(hitStop, .18); sfx(1, 300, 1.2);
+}
+// my own knockout against the computer, or online
+function playerDown() {
+  if (pvp) return pvpDown();
+  if (P.death) return;
+  P.hp = 1; tally.theirs++; die(P, foeUlting() ? foe : null, E); startTruce(true); popup.t = 0;
 }
 const foeName = () => ROSTER[foe].name + (foe === who ? ' (MIRROR)' : '');
 function strikeEnemy(x, y, z, r) {
@@ -3218,7 +3248,7 @@ function hurtPlayer(dmg, fx, fz, knock = 18) {
   if (who === 'brute' && P.cm?.name === 'brace' && Math.cos(Math.atan2(fx - P.x, fz - P.z) - P.yaw) > .2) {
     P.hp -= loss * (perk('guard') ? .05 : BRACE_BLOCK); P.iframe = .3; P.cm.blocked = P.cm.t; jolt(.5, .05); sfx(.8, 1600, .15);
     for (let i = 0; i < 8; i++) debris(P.x, P.y + 3, P.z, rr(.1, .2), [1, .9, .6], rr(-12, 12), rr(2, 12), rr(-12, 12), rr(.15, .4));
-    if (P.hp <= 0) { if (pvp) pvpDown(); else { P.hp = 1; say('YOU FELL', 2); startTruce(true); popup.t = 1.5; } }
+    if (P.hp <= 0) playerDown();
     return true;
   }
   P.hp -= loss; P.iframe = .55; P.hurtT = .35;
@@ -3229,10 +3259,7 @@ function hurtPlayer(dmg, fx, fz, knock = 18) {
   if (who === 'brute' && P.titan > 0) { P.hp += loss * .5; }          // a titan takes half
   if (knock > 0) { P.vx = dx / d * knock; P.vz = dz / d * knock; P.vy = Math.max(P.vy, steady ? 4 : 11); P.grounded = false; }
   cam.shake = Math.max(cam.shake, .9); hitStop = Math.max(hitStop, .07); sfx(.9, 500, .25);
-  if (P.hp <= 0 && pvp) { pvpDown(); return true; }
-  if (P.hp <= 0) {                                          // round over
-    P.hp = 1; say('YOU FELL', 2); startTruce(true); popup.t = 1.5;
-  }
+  if (P.hp <= 0) playerDown();                              // round over
   return true;
 }
 
@@ -3506,7 +3533,8 @@ function stepEnemy(dt) {
   stepSlides(dt);
   if (pvp) return remoteStep(dt);                           // a person is driving the rival
   if (fighting) stepClones(E.clones, false, dt);
-  if (E.dead || !fighting) return;
+  if (E.dead) { E.px = E.x; E.py = E.y; E.pz = E.z; E.vy = Math.max(E.vy - 45 * dt, -60); if (E.death && enemyMove('y', E.vy * dt)) E.vy = 0; if (E.y < 0) E.y = 0; return; }
+  if (!fighting) return;
   E.guard -= dt;
   if ((E.pokeT -= dt) <= 0) E.poked = 0;
   // sees a big attack winding up and gets out of the way, sometimes
@@ -4036,11 +4064,12 @@ function drawStars(x, y, z, time) {
 }
 function drawEnemy(time, alpha) {
   if (remoteDrawing) return;
+  if (P.death) deathPose(1, { x: drawnAt[0], y: drawnAt[1], z: drawnAt[2], yaw: P.yaw }, P.death, time);   // only my body is drawn so far
   const top = { ninja: 2.9, civ: 2.4, hero: 2.7, cinder: 3.9, brute: 4.7, halo: 3.3, slash: 3.3, shoot: 3.2 };
   if (!E.dead && E.dazed > 0) drawStars(E.x, E.y + top[foe], E.z, time);
   if (P.stunT > 0) drawStars(P.x, P.y + top[who], P.z, time);
   if (pvp) return drawRemote(time);
-  if (E.dead) return;
+  if (E.dead && !E.death) return;
   const v = Object.assign({}, E, { x: E.px + (E.x - E.px) * alpha, y: E.py + (E.y - E.py) * alpha, z: E.pz + (E.z - E.pz) * alpha });
   const first = dynCount;
   if (E.inferno > 0 && fxDt) for (let n = often(30); n-- > 0;) flame(E.x + rr(-1, 1), E.y + rr(.5, 3.5), E.z + rr(-1, 1), rr(-2, 2), rr(3, 8), rr(-2, 2), rr(.3, .6), rr(.3, .7), foe !== who ? FIRE : FROST);
@@ -4048,6 +4077,80 @@ function drawEnemy(time, alpha) {
   drawModel(foe, v, time, foe === who);
   if (foe === 'ninja') drawClones(E.clones, time);
   if (E.swing) tumble(first, v, E.swing);                    // limp in someone's grip
+  if (E.death) deathPose(first, v, E.death, time);
+}
+
+// Move the boxes drawn from `first` onward as the body of a fallen fighter v (who faces their killer).
+const CHAR = [.035, .025, .02], HOT = [1, .95, .7];
+function deathPose(first, v, d, time) {
+  const t = d.t, s = Math.sin(v.yaw), c = Math.cos(v.yaw), ease = (x, over) => clamp(x / over, 0, 1);
+  let tall = 1;
+  for (let i = first; i < dynCount; i++) if (dynData[i * 12 + 5] < 8) tall = clamp(dynData[i * 12 + 1] - v.y, tall, 6);
+  for (let i = first; i < dynCount; i++) {
+    const o = i * 12;
+    if (dynData[o + 4] > 8 || dynData[o + 5] > 8 || dynData[o + 6] > 8) continue;         // not part of a body
+    const dx = dynData[o] - v.x, dz = dynData[o + 2] - v.z;
+    let f = dx * s + dz * c, side = dx * c - dz * s, up = dynData[o + 1] - v.y;
+    const n = i - first, h = Math.abs(Math.sin(n * 91.7) * 43758.5) % 1, k = Math.abs(Math.sin(n * 47.3) * 24634.6) % 1;
+    const topple = (a, pivot = 0) => {                        // + leans back, away from the killer
+      const sa = Math.sin(a), ca = Math.cos(a), u = up - pivot, ff = f * ca - u * sa;
+      up = Math.max(.12, pivot + u * ca + f * sa); f = ff; dynData[o + 11] -= a;
+    };
+    const paint = (col, mix, glow) => {
+      for (let j = 0; j < 3; j++) dynData[o + 8 + j] += (col[j] - dynData[o + 8 + j]) * mix;
+      if (glow) dynData[o + 3] = 3 + dynData[o + 3] % 1;
+    };
+    const kind = d.kind;
+    if (kind === 'slash') {                                   // cut on the slant: the top half slides off, then the legs give
+      const line = tall * .52 + side * .3;
+      if (up > line) {
+        const slide = ease(t - .3, .9), drop = Math.max(0, t - 1.1);
+        side += slide * tall * .55; up = Math.max(.15, up - slide * tall * .17 - drop * drop * 9); f -= drop * .6;
+      } else topple(ease(t - 1.5, .5) ** 2 * 1.5);
+    } else if (kind === 'cinder') {                           // burnt to a crisp, then keels over
+      paint(CHAR, ease(t, .9), t < .35);
+      up *= 1 - .22 * ease(t - .4, 1);
+      topple(-(ease(t - 1.6, .6) ** 2) * 1.5);
+    } else if (kind === 'brute') {                            // pancaked
+      const q = ease(t, .1);
+      up = up * (1 - .94 * q) + .05; f *= 1 + .6 * q; side *= 1 + .6 * q;
+      dynData[o + 5] *= 1 - .9 * q; dynData[o + 4] *= 1 + .5 * q; dynData[o + 6] *= 1 + .3 * q; dynData[o + 11] *= 1 - q;
+    } else if (kind === 'hero') {                             // diced
+      const q = Math.min(t, .9);
+      side += (side * 3 + (h - .5) * 7) * q; f += ((k - .5) * 8) * q;
+      up = Math.max(.1, up + (3 + h * 7) * t - 15 * t * t);
+      dynData[o + 7] += q * (h - .5) * 14; dynData[o + 11] += q * (k - .5) * 14;
+      for (let j = 4; j < 7; j++) dynData[o + j] *= .75;
+    } else if (kind === 'halo') {                             // turned to light and gone
+      paint(HOT, ease(t, .3), true);
+      up += t * t * (.6 + h * 2.5); side += Math.sin(t * 5 + h * 6) * t * .4;
+      const left = 1 - ease(t - .4 - h * .5, 1);
+      for (let j = 4; j < 7; j++) dynData[o + j] *= left;
+    } else if (kind === 'shoot') {                            // blown backwards off their feet
+      const q = Math.min(t, .8);
+      paint([.6, .95, 1], Math.max(0, 1 - t * 2), t < .3);
+      topple(ease(t, .35) * 1.55, tall * .5 * (1 - ease(t - .4, .4)));
+      f -= q * 13; up = Math.max(.12, up + Math.sin(q / .8 * Math.PI) * 1.6);
+    } else if (kind === 'civ') {                              // sent flying over the bonnet
+      const q = Math.min(t, .95);
+      topple(q < .95 ? q * 10.5 : 1.55, tall * .5 * (q < .95 ? 1 : 0));
+      f -= q * 9; up = Math.max(.12, up + Math.sin(q / .95 * Math.PI) * 4.5);
+    } else if (kind === 'ninja') {                            // caught in the whirlwind, then dropped in pieces
+      const q = Math.min(t, 1.5), a = q * (7 + h * 3), rad = 1 + q * (.5 + k), cs = Math.cos(a), sn = Math.sin(a);
+      [side, f] = [(side * cs - f * sn) * rad + sn * q, (side * sn + f * cs) * rad];
+      const drop = Math.max(0, t - 1.5);
+      up = Math.max(.1, up + q * q * (1 + h * 1.8) - drop * drop * 14);
+      dynData[o + 7] += a;
+    } else topple(ease(t, .7) ** 2 * 1.55);                  // an ordinary knockout: over backwards
+    dynData[o] = v.x + f * s + side * c; dynData[o + 1] = v.y + up; dynData[o + 2] = v.z + f * c - side * s;
+  }
+  if (d.kind === 'slash' && t < 1.4) beamBox([v.x + c * -1.8, v.y + tall * .52 - .55, v.z - s * -1.8], [v.x + c * 1.8, v.y + tall * .52 + .55, v.z - s * 1.8], .08 * (1.4 - t), .08 * (1.4 - t), [1, .15, .2], 3);
+  if (!fxDt || t > 2.6) return;
+  if (d.kind === 'cinder') {
+    for (let n = often(t < 1.2 ? 40 : 12); n-- > 0;) flame(v.x + rr(-.8, .8), v.y + rr(.2, tall), v.z + rr(-.8, .8), rr(-1, 1), rr(2, 6), rr(-1, 1), rr(.25, .6), rr(.3, .7), FIRE);
+    for (let n = often(14); n-- > 0;) quietly(() => debris(v.x + rr(-.5, .5), v.y + rr(.5, tall), v.z + rr(-.5, .5), rr(.1, .22), [.12, .11, .11], rr(-1, 1), rr(5, 10), rr(-1, 1), rr(.5, 1)));
+  }
+  if (d.kind === 'slash' && t > .25 && t < 1.2) for (let n = often(30); n-- > 0;) quietly(() => debris(v.x, v.y + tall * .52, v.z, rr(.06, .14), BLOOD, rr(-4, 4), rr(1, 7), rr(-4, 4), rr(.4, .9)));
 }
 
 // tip every box of a drawn fighter about their feet
@@ -5452,7 +5555,7 @@ function resetWorld(keepCity) {
   debrisLive = 0;
 }
 
-let dusk = 0;
+let dusk = 0, drawnAt = [0, 0, 0];
 // the ultimates, as moves (theirs and the computer's): Reaper Sphere and the railgun are flags of their own
 const ULT_MOVES = new Set(['inferno', 'titan', 'ragdoll', 'flare', 'horizon', 'sphere', 'rail', 'tempest']);
 function render(dt, time, alpha = 1) {
@@ -5469,6 +5572,7 @@ function render(dt, time, alpha = 1) {
   // draw the player between the last two physics steps so motion stays even at any refresh rate
   const real = [P.x, P.y, P.z];
   P.x = P.px + (real[0] - P.px) * alpha; P.y = P.py + (real[1] - P.py) * alpha; P.z = P.pz + (real[2] - P.pz) * alpha;
+  drawnAt = [P.x, P.y, P.z];
   buildDynamic(time);
   buildFallers();
   if (preview) lifeCount = fallCount = 0; else buildLife();
@@ -5510,7 +5614,7 @@ function render(dt, time, alpha = 1) {
 // ───────────────────────── events + loop ─────────────────────────
 const locked = () => document.pointerLockElement === canvas;
 // ───────────────────────── online 1v1 (WebRTC, peer to peer) ─────────────────────────
-const PROTO = 17;
+const PROTO = 18;
 const PEER_LIB = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';   // only loaded when you go online
 const LOCAL_NET = new URLSearchParams(location.search).get('net') === 'local';   // two tabs on one computer, for testing
 // the parts of a fighter the other side needs in order to draw them
@@ -5609,21 +5713,22 @@ function pvpSpawn() {
   const z = pvp.hosting ? 0 : 36, yaw = pvp.hosting ? 0 : Math.PI;
   Object.assign(P, { x: 0, y: 0, z, px: 0, py: 0, pz: z, vx: 0, vy: 0, vz: 0, yaw, hp: 100, iframe: 2, style: 0, flying: false, held: null, shield: 0, calm: 0, holding: null, chain: null, cm: null, cds: {}, sun: 100, heat: 0, empower: 0, vent: 0, burn: null });
   cam.yaw = yaw; pvp.pin = null;
-  Object.assign(P, { style: perk('kindle') ? 35 : 0, shield: perk('field') ? 20 : 0, dashes: maxDashes(), ammo: maxAmmo(), reload: 0, drive: null, yell: null, clones: [] });
-  Object.assign(E, { x: 0, y: 0, z: 36 - z, px: 0, py: 0, pz: 36 - z, dead: false, awake: true, state: 'idle', hp: E.max });
+  Object.assign(P, { style: perk('kindle') ? 35 : 0, shield: perk('field') ? 20 : 0, dashes: maxDashes(), ammo: maxAmmo(), reload: 0, drive: null, yell: null, clones: [], death: null });
+  Object.assign(E, { x: 0, y: 0, z: 36 - z, px: 0, py: 0, pz: 36 - z, dead: false, awake: true, state: 'idle', hp: E.max, death: null });
   startTruce(false);
 }
 function pvpDown() {
-  pvp.theirs++; netSend({ t: 'down' });
-  say('YOU FELL  ·  ' + pvp.mine + ' - ' + pvp.theirs, 2.5);
-  P.hp = 1; P.stunT = 0; pvp.pin = null;
-  startTruce(true); popup.t = 1.5;
+  if (P.death) return;
+  pvp.theirs++; netSend({ t: 'down', u: byUlt ? 1 : 0 });
+  P.hp = 1; P.stunT = 0; pvp.pin = null; die(P, byUlt ? foe : null, E);
+  startTruce(true); popup.t = 0;
 }
 
 // everything arriving is from someone else's computer, so check it before using it
 const num = (v, lo, hi, d = 0) => Number.isFinite(v) ? clamp(v, lo, hi) : d;
 function onNet(m) {
   if (!m || typeof m !== 'object') return;
+  byUlt = !!m.u && (m.t === 'hit');
   if (m.t === 'hello') {
     if (m.v !== PROTO) return setStatus('The two of you are running different versions. Both refresh the page.');
     if (!ROSTER[m.kind] || pvp) return;
@@ -5694,7 +5799,7 @@ function onNet(m) {
   else if (m.t === 'knock') {
     if (truce.t > 0) return;
     P.vx = num(m.x, -90, 90); P.vy = num(m.y, -20, 60); P.vz = num(m.z, -90, 90); P.grounded = false; P.flying = false;
-  } else if (m.t === 'down') { pvp.mine++; say('YOU WIN THE ROUND  ·  ' + pvp.mine + ' - ' + pvp.theirs, 2.5); startTruce(true); popup.t = 1.5; }
+  } else if (m.t === 'down') { if (!E.death) { pvp.mine++; die(E, m.u ? who : null, P); startTruce(true); popup.t = 0; } }
   else if (m.t === 'slide') landslide(num(m.x, -400, 400), num(m.y, 0, 300), num(m.z, -400, 400), num(m.yaw, -10, 10), false, true);
   else if (m.t === 'topple') {
     const b = buildings[m.i | 0];
@@ -5826,6 +5931,7 @@ function drawRemote(time) {
     if (m.s.chain && !Array.isArray(m.s.chain.a)) P.chain = null;
     who = foe; pose = pvp.pose; tint = foe === mine.who; remoteDrawing = true;
     buildScene(time);
+    if (E.death) deathPose(first, { x: E.x, y: E.y, z: E.z, yaw: P.yaw }, E.death, time);
     if (P.held?.type === 'rock') push(E.x, E.y + (foe === 'halo' ? 3.7 : 5.6), E.z, 0, 2.4, P.held.type === 'car' ? 1.2 : 1.8, 2.4, E.yaw, P.held.color || [.5, .2, .2]);
   } catch (e) { console.warn('could not draw the other player', e); }
   remoteDrawing = false;
@@ -5953,7 +6059,7 @@ function show(name) {
 
 // ── matches ──
 function setMatch(a, b) {
-  who = a; foe = b; preview = null;
+  who = a; foe = b; preview = null; tally.mine = tally.theirs = 0;
   resetWorld(); waves = [];
   P.look = randomLook(); E.look = randomLook();
   $('help').innerHTML = helpHTML();
@@ -6063,7 +6169,7 @@ const ACT = {
   rematch() {
     resetEnemy();
     const x = P.x + Math.sin(cam.yaw) * 18, z = P.z + Math.cos(cam.yaw) * 18;
-    Object.assign(E, { x, z, y: P.y, px: x, pz: z, py: P.y, awake: true, cd: 1.4 }); P.hp = 100; startTruce(false); resume();
+    Object.assign(E, { x, z, y: P.y, px: x, pz: z, py: P.y, awake: true, cd: 1.4 }); P.hp = 100; P.death = null; startTruce(false); resume();
   },
   rebuild() { resetWorld(); resume(); },
   toggle(id) { settings[id] = !settings[id]; applySettings(); show('options'); },
@@ -6161,6 +6267,18 @@ function showScore() {
   if (html === scoreShown) return;
   scoreShown = html; $('score').innerHTML = html; $('score').style.display = html ? 'block' : 'none';
 }
+let winnerShown = '';
+function showWinner() {
+  let html = '';
+  if (truce.over && truce.t > 0 && !pvp?.stage && (P.death || E.death)) {
+    const t = pvp || tally;
+    const title = P.death && E.death ? 'DOUBLE KNOCKOUT' : (E.death ? ROSTER[who].name + (who === foe ? ' (YOU)' : '') : ROSTER[foe].name + (who === foe ? ' (RIVAL)' : '')) + ' WON!';
+    html = `${title}<small>YOU ${t.mine} - ${t.theirs} RIVAL</small><small>${pvp?.bo5 ? '' : 'next round in ' + Math.ceil(truce.t)}</small>`;
+  }
+  if (html === winnerShown) return;
+  winnerShown = html; $('winner').innerHTML = html; $('winner').style.display = html ? 'block' : 'none';
+  $('pop').style.visibility = html ? 'hidden' : '';                     // the banner says it all
+}
 function frame(now) {
   if (cap60) {
     if (now < due - 3) { requestAnimationFrame(frame); return; }
@@ -6183,7 +6301,7 @@ function frame(now) {
   }
   render(playing || mode === 'menu' ? dt : 0, time, playing ? acc / STEP : 1);
   $('style').firstChild.style.width = P.style + '%';
-  showScore();
+  showScore(); showWinner();
   bubble(bubbles[0], P.yell, P.x, P.y + (P.drive ? 2.5 : 2.3), P.z);
   bubble(bubbles[1], E.dead ? null : pvp ? pvp.state?.s?.yell : E.yell, E.x, E.y + (E.drive || pvp?.state?.s?.drive ? 2.5 : 2.3), E.z);
   $('meter').style.display = who === 'halo' || who === 'cinder' ? '' : 'none';
