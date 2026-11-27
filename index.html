@@ -29,12 +29,14 @@
   #boss>div{height:9px;border:1px solid #f974;border-radius:5px;background:#0008}
   #boss i,#hp i{display:block;height:100%;border-radius:5px}
   #boss i{background:#ff5a1f}
+  #score{position:fixed;left:50%;top:44px;transform:translateX(-50%);display:none;white-space:nowrap;padding:4px 16px;border-radius:8px;background:#000b;font:800 20px/1.3 system-ui,sans-serif;letter-spacing:2px;color:#fff;pointer-events:none}
+  #score b{color:#5fd4ff;margin:0 8px} #score em{color:#ff8a5f;margin:0 8px;font-style:normal}
   #hp{position:fixed;left:16px;bottom:22px;width:220px;height:12px;border:1px solid #fff7;border-radius:6px;background:#0008}
   #hp i{background:#5fe39a}
   #blind{position:fixed;inset:0;pointer-events:none;opacity:0;background:#fff}
   #cross.scoped{width:5px;height:5px;margin:-2.5px;background:#f33;opacity:1;outline:2px solid #fffc;outline-offset:44px}
   #hurt{position:fixed;inset:0;pointer-events:none;opacity:0;box-shadow:inset 0 0 140px 40px #d1200f}
-  body.inmenu #help,body.inmenu #stats,body.inmenu #cross,body.inmenu #bar,body.inmenu #style,body.inmenu #meter,body.inmenu #pop,body.inmenu #boss,body.inmenu #hp,body.inmenu #hurt,body.inmenu #msg,body.inmenu .bubble{display:none!important}
+  body.inmenu #help,body.inmenu #stats,body.inmenu #cross,body.inmenu #bar,body.inmenu #style,body.inmenu #meter,body.inmenu #pop,body.inmenu #boss,body.inmenu #score,body.inmenu #hp,body.inmenu #hurt,body.inmenu #msg,body.inmenu .bubble{display:none!important}
   #menu{position:fixed;inset:0;z-index:5;pointer-events:none;font-size:14px}
   #menu *{box-sizing:border-box}
   .pane{position:absolute;pointer-events:auto;background:#0a0f1ee6;border:1px solid #6fb7ff33;border-radius:12px;padding:18px;overflow:auto}
@@ -82,6 +84,7 @@
 
 <div id="pop"></div>
 <div id="boss"><span></span><div><i></i></div></div>
+<div id="score"></div>
 <div id="hp"><i></i></div>
 <div id="hurt"></div>
 <div id="blind"></div>
@@ -6150,6 +6153,14 @@ function bubble(el, yell, x, y, z) {
   el.style.top = (.5 - (m[1] * x + m[5] * y + m[9] * z + m[13]) / w * .5) * innerHeight + 'px';
 }
 const bubbles = document.getElementsByClassName('bubble');
+// online: the score, always in view; best of 5 shows a dot per round needed
+let scoreShown = '';
+function showScore() {
+  const dots = n => '●'.repeat(Math.min(n, WINS)) + '○'.repeat(Math.max(0, WINS - n));
+  const html = !pvp ? '' : pvp.bo5 ? `YOU<b>${dots(pvp.mine)}</b>|<em>${dots(pvp.theirs)}</em>THEM` : `YOU<b>${pvp.mine}</b>-<em>${pvp.theirs}</em>THEM`;
+  if (html === scoreShown) return;
+  scoreShown = html; $('score').innerHTML = html; $('score').style.display = html ? 'block' : 'none';
+}
 function frame(now) {
   if (cap60) {
     if (now < due - 3) { requestAnimationFrame(frame); return; }
@@ -6172,6 +6183,7 @@ function frame(now) {
   }
   render(playing || mode === 'menu' ? dt : 0, time, playing ? acc / STEP : 1);
   $('style').firstChild.style.width = P.style + '%';
+  showScore();
   bubble(bubbles[0], P.yell, P.x, P.y + (P.drive ? 2.5 : 2.3), P.z);
   bubble(bubbles[1], E.dead ? null : pvp ? pvp.state?.s?.yell : E.yell, E.x, E.y + (E.drive || pvp?.state?.s?.drive ? 2.5 : 2.3), E.z);
   $('meter').style.display = who === 'halo' || who === 'cinder' ? '' : 'none';
