@@ -1306,17 +1306,17 @@ function civActions() {
   }
   if (pressed.has('KeyQ') && (P.style >= 100 || debug) && P.grounded) {
     spendUlt(); P.cm = null;
-    P.drive = { t: CAR_TIME, v: 0, yaw: cam.yaw, rest: 0 };
+    P.drive = { t: CAR_TIME, v: 0, yaw: cam.yaw, steer: 0, rest: 0, c: Math.random() * CAR_COLORS.length | 0 };
     say('CAR!', 1.2); dust(P.x, P.y, P.z, 30, 12); sfx(1, 300, .8);
   }
 }
 function endDrive(crashed) {
   if (!P.drive) return;
-  const y = P.drive.yaw;
+  const y = P.drive.yaw, paint = CAR_COLORS[P.drive.c];
   P.drive = null;
   dust(P.x, P.y + 1, P.z, crashed ? 50 : 20, crashed ? 18 : 8);
   if (!crashed) return;
-  for (let i = 0; i < 24; i++) debris(P.x + Math.sin(y) * 2, P.y + 1, P.z + Math.cos(y) * 2, rr(.15, .45), i % 2 ? [1, .55, .1] : CIV_CAR, rr(-14, 14), rr(3, 18), rr(-14, 14), rr(.5, 1.6));
+  for (let i = 0; i < 24; i++) debris(P.x + Math.sin(y) * 2, P.y + 1, P.z + Math.cos(y) * 2, rr(.15, .45), i % 2 ? [1, .55, .1] : paint, rr(-14, 14), rr(3, 18), rr(-14, 14), rr(.5, 1.6));
   cam.shake = 1.2; sfx(1, 350, .8);
 }
 // health gone without a hit landing: his crash, and 1-point punches
@@ -1341,11 +1341,27 @@ function civMove(dt) {
   if (!c) return false;
   c.t -= dt; c.rest -= dt;
   const gas = (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0), turn = (keys.has('KeyA') ? 1 : 0) - (keys.has('KeyD') ? 1 : 0);
-  c.v = gas ? clamp(c.v + gas * (gas * c.v < 0 ? 60 : 26) * dt, -10, CAR_SPEED) : c.v * (1 - 1.5 * dt);
-  const dy = turn * 2.2 * dt * clamp(c.v / 9, -1, 1);
-  c.yaw += dy; cam.yaw += dy; P.yaw = c.yaw;
-  const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw), nose = Math.sign(c.v) * 2.3;
-  if (Math.abs(c.v) > 1 && hit(P.x + fx * nose - .6, P.y + .4, P.z + fz * nose - .6, P.x + fx * nose + .6, P.y + 1.6, P.z + fz * nose + .6)) c.v = 0;
+  if (gas) c.v = clamp(c.v + gas * (gas * c.v < 0 ? 75 : gas > 0 ? 30 : 20) * dt, -14, CAR_SPEED);     // the other pedal brakes hard
+  else c.v *= 1 - .9 * dt;
+  // the wheel eases over; turning is tight when slow and calmer flat out, and works from a near standstill
+  c.steer += (turn - c.steer) * Math.min(1, 12 * dt);
+  const bite = Math.max(clamp(Math.abs(c.v) / 5, 0, 1), gas ? .4 : 0) * (3 - 1.3 * Math.abs(c.v) / CAR_SPEED);
+  const dy = c.steer * bite * dt * (c.v < -.5 || !c.v && gas < 0 ? -1 : 1);
+  c.yaw += dy; cam.yaw += dy;
+  if (clock - (cam.moved ?? -9) > .8) cam.yaw += Math.atan2(Math.sin(c.yaw - cam.yaw), Math.cos(c.yaw - cam.yaw)) * Math.min(1, 4 * dt);   // camera settles behind
+  // walls: clip one corner and it glances off; hit square on and it bounces back, never stuck
+  const way = Math.sign(c.v), nose = way * 2.3;
+  if (Math.abs(c.v) > .2) {
+    const corner = side => {
+      const x = P.x + Math.sin(c.yaw) * nose + Math.cos(c.yaw) * side, z = P.z + Math.cos(c.yaw) * nose - Math.sin(c.yaw) * side;
+      return hit(x - .2, P.y + .4, z - .2, x + .2, P.y + 1.6, z + .2);
+    };
+    const right = corner(.9), left = corner(-.9);
+    if (right && left) c.v = Math.abs(c.v) > 6 ? -c.v * .3 : 0;
+    else if (right || left) { c.yaw -= (right ? 1 : -1) * way * 3 * dt; c.v *= 1 - 1.5 * dt; }
+  }
+  P.yaw = c.yaw;
+  const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw);
   P.vx = fx * c.v; P.vz = fz * c.v;
   if (Math.abs(c.v) > 6) {
     for (const o of cars) if (!o.wreck && Math.hypot(o.x - P.x - fx * nose, o.z - P.z - fz * nose) < 2.4 && P.y < 2) wreckCar(o, P.x, P.z, Math.abs(c.v) * .6);
@@ -4123,17 +4139,13 @@ function drawEnemyEffects(time) {
   }
 }
 
-const CIV_CAR = [.9, .65, .05];
 // CIVILIANBOI, on foot or in the car
 function drawCiv(v, time) {
   const sy = Math.sin(v.yaw), cy = Math.cos(v.yaw), look = v.look || [1, 0];
   const part = (side, up, fwd, w, h, d, col, pitch = 0, m = 0) => push(v.x + side * cy + fwd * sy, v.y + up, v.z - side * sy + fwd * cy, m, w, h, d, v.yaw, col, pitch);
   const shirt = SHIRTS[look[0]] || SHIRTS[1], skin = SKINS[look[1]] || SKINS[0];
-  if (v.drive) {
-    part(0, .8, 0, 2.1, .7, 4.4, CIV_CAR); part(0, 1.3, .9, 1.9, .5, .1, GLASS); part(0, 1.2, -1.6, 2, .1, 1.2, CIV_CAR);
-    part(0, .38, 1.45, 2.3, .72, .8, TYRE); part(0, .38, -1.45, 2.3, .72, .8, TYRE);
-    part(0, .85, 2.21, 1.7, .2, .06, LAMP, 0, 3); part(0, .85, -2.21, 1.7, .2, .06, TAIL, 0, 3);
-    part(0, 1.4, -.3, .52, .6, .3, shirt); part(0, 1.88, -.3, .32, .34, .32, skin);      // him, at the wheel of an open top
+  if (v.drive) {                                              // one of the street's cars, with him inside
+    carShape((side, up, fwd, w, h, d, col, m) => part(side, up, fwd, w, h, d, col, 0, m), CAR_COLORS[v.drive.c ?? look[0]] || CAR_COLORS[0], false, true);
     return;
   }
   const speed = Math.hypot(v.vx || 0, v.vz || 0), run = speed > 8;
@@ -4337,13 +4349,7 @@ function buildLife() {
     const part = (side, up, fwd, w, h, d, col, m = 0) =>
       add(c.x + side * cy + fwd * sy, c.y + (flip < 0 ? 2 - up : up), c.z - side * sy + fwd * cy, m, w, h, d, c.yaw, col, c.pitch);
     const paint = c.wreck ? [.09, .075, .065] : c.color;
-    part(0, .8, 0, 2.1, .7, 4.4, paint);
-    part(0, 1.43, -.3, 1.9, .6, 2.2, c.wreck ? paint : GLASS);
-    part(0, 1.76, -.3, 1.95, .1, 2.0, paint);
-    if (far < 110) {
-      part(0, .38, 1.45, 2.3, .72, .8, TYRE); part(0, .38, -1.45, 2.3, .72, .8, TYRE);
-      if (!c.wreck) { part(0, .85, 2.21, 1.7, .2, .06, LAMP, 3); part(0, .85, -2.21, 1.7, .2, .06, TAIL, 3); }
-    }
+    carShape(part, paint, c.wreck, far < 110);
   }
   for (const p of civs) {
     const far = Math.hypot(p.x - P.x, p.z - P.z);
@@ -4368,6 +4374,14 @@ function buildLife() {
     const run = p.panic > 0, swing = Math.sin(p.step) * (run ? .9 : .45);
     person(part, p.shirt, p.skin, swing, run, far < 80);
   }
+}
+function carShape(part, paint, wrecked, detail) {
+  part(0, .8, 0, 2.1, .7, 4.4, paint);
+  part(0, 1.43, -.3, 1.9, .6, 2.2, wrecked ? paint : GLASS);
+  part(0, 1.76, -.3, 1.95, .1, 2.0, paint);
+  if (!detail) return;
+  part(0, .38, 1.45, 2.3, .72, .8, TYRE); part(0, .38, -1.45, 2.3, .72, .8, TYRE);
+  if (!wrecked) { part(0, .85, 2.21, 1.7, .2, .06, LAMP, 3); part(0, .85, -2.21, 1.7, .2, .06, TAIL, 3); }
 }
 // a person standing up; punch = [arm side, how far out, how high]
 function person(part, shirt, skin, swing, run, limbs, punch) {
@@ -4846,7 +4860,7 @@ function updateCamera(dt, time, aspect) {
   const strafe = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0);
   cam.roll += ((P.slide ? -.045 : 0) + strafe * .012 - cam.roll) * ease(10);
   const target = [P.x, P.y + ROSTER[who].camH - cam.dip - cam.low, P.z];
-  const want = ROSTER[who].camD + (P.leaping ? (who === 'halo' ? 0 : 5) : 0) + Math.min(who === 'halo' ? 1 : 2.5, speed * .045) + (P.chain ? 2.5 : 0) + (P.storm ? 22 : P.cross ? 5 : 0);
+  const want = ROSTER[who].camD + (P.leaping ? (who === 'halo' ? 0 : 5) : 0) + Math.min(who === 'halo' ? 1 : 2.5, speed * .045) + (P.chain ? 2.5 : 0) + (P.drive ? 4 : 0) + (P.storm ? 22 : P.cross ? 5 : 0);
   let free = want;
   const closest = ROSTER[who].camD * .6;                    // never so close that a big fighter fills the screen
   for (let t = ROSTER[who].camD * .3; t <= want; t += .5)
@@ -5799,7 +5813,7 @@ addEventListener('mouseup', e => { if (e.button > 2) e.preventDefault(); if (mod
 addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('mousemove', e => {
   if (!locked() || mode !== 'play') return;
-  cam.turnTo = undefined;
+  cam.turnTo = undefined; cam.moved = clock;
   const sens = P.scope ? .45 : 1;
   cam.yaw -= e.movementX * .0024 * sens;
   cam.pitch = clamp(cam.pitch - e.movementY * .0022 * sens, -1.35, 1.25);
