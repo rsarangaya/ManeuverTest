@@ -1265,8 +1265,9 @@ function horizonCut(x, y, z, yaw, mine) {
 
 // ───────── SHOOTYGAL: fast, fragile up close, deadly with room to aim ─────────
 const RIFLE_DMG = 13, HEAD_BONUS = 1.5, AMMO = 12, RELOAD = 1.4, BULLET = 190;
-// the railgun: her ultimate. Superspeed while it is out, and two lasers that go straight through anything
-const RAIL_DMG = 140, RAIL_TIME = 10, RAIL_WIDTH = 1.6, RAIL_REACH = 160, RAIL_GAP = .35, RAIL_FLASH = .3, RAIL_RUSH = 1.7;
+// the railgun: her ultimate. Superspeed while it is out, and two lasers that go straight through anything.
+// RAIL_WIDTH is the laser's radius: 5 m across, as tall as TANKBOI
+const RAIL_DMG = 140, RAIL_TIME = 10, RAIL_WIDTH = 2.5, RAIL_REACH = 160, RAIL_GAP = .35, RAIL_FLASH = .3, RAIL_RUSH = 1.7;
 const GUNFIRE = new Set(['shot', 'pellet', 'net', 'flash', 'ric']);
 // a shot in flight; waves already travel, draw and cross the network
 function fire(from, d, kind, speed, life, extra = {}) {
@@ -1361,12 +1362,13 @@ function railFire() {
   const look = lookDir(), o = aimOrigin(look), from = muzzle(), e = sub([E.x, E.y + 1.6, E.z], o), t = dot(e, look);
   const onLine = !E.dead && t > 0 && Math.hypot(...e.map((v, i) => v - look[i] * t)) < 1.6 + Math.max(0, pad(foe));
   const to = onLine ? [E.x, E.y + 1.6, E.z] : o.map((v, i) => v + look[i] * RAIL_REACH), d = sub(to, from), l = Math.hypot(...d) || 1;
-  P.railBeam = { from, to: railLine(from, d.map(v => v / l), true), t: RAIL_FLASH };
+  P.railBeam = { from, to: railLine(from, d.map(v => v / l), true), t: RAIL_FLASH, w: railWidth(true) };
   P.punch = .3; jolt(1.4, .09); sfx(1, 180, 1);
 }
+const railWidth = mine => mine && perk('wide') ? RAIL_WIDTH * 1.5 : RAIL_WIDTH;
 // the railgun's laser: all at once and straight through everything, boring a tunnel and hitting whoever is on the line
 function railLine(from, u, mine) {
-  const width = mine ? RAIL_WIDTH * (perk('wide') ? 1.6 : 1) : RAIL_WIDTH;
+  const width = railWidth(mine);
   const target = mine ? (E.dead ? null : [E.x, E.y + 1.5, E.z, pad(foe)]) : [P.x, P.y + 1.1, P.z, pad(who)];
   let hit = false, k = 2;
   for (; k <= RAIL_REACH; k += 2.5) {
@@ -3145,7 +3147,7 @@ function activeMove(dt) {
     else if (E.move === 'rail' && E.hits < 2 && E.t >= .1 + E.hits * .45) {
       E.hits++;
       const lock = E.target || [P.x, P.y, P.z], at = sub([lock[0], lock[1] + 1.1, lock[2]], from), al = Math.hypot(...at) || 1;
-      E.railBeam = { from: from.slice(), to: railLine(from, at.map(v => v / al), false), t: RAIL_FLASH }; jolt(1, .06); sfx(1, 180, 1);
+      E.railBeam = { from: from.slice(), to: railLine(from, at.map(v => v / al), false), t: RAIL_FLASH, w: RAIL_WIDTH }; jolt(1, .06); sfx(1, 180, 1);
     }
   } else if (E.move === 'horizon') {
     E.vx = E.vz = 0;
@@ -3631,7 +3633,15 @@ function drawGunner(v, time) {
   if (v.railBeam?.to) {                                       // the railgun's laser, fading
     const b = v.railBeam, d = sub(b.to, b.from), l = Math.hypot(...d) || 1, k = clamp((b.t || 0) / RAIL_FLASH, 0, 1);
     const yw = Math.atan2(d[0], d[2]), pitch = -Math.asin(clamp(d[1] / l, -1, 1)), mid = b.from.map((x, i) => x + d[i] / 2);
-    push(...mid, 3, .15 + .5 * k, .15 + .5 * k, l, yw, [.55, 1, 1], pitch); push(...mid, 3, .16, .16, l, yw, [1, 1, 1], pitch);
+    const r = b.w || RAIL_WIDTH, u = d.map(x => x / l), sl = Math.hypot(u[0], u[2]) || 1;
+    const side = [u[2] / sl, 0, -u[0] / sl], up = [side[1] * u[2] - side[2] * u[1], side[2] * u[0] - side[0] * u[2], side[0] * u[1] - side[1] * u[0]];
+    push(...mid, 3, .5 + .6 * k, .5 + .6 * k, l, yw, [1, 1, 1], pitch);                      // white-hot core
+    push(...mid, 3, r * .35 * k + .3, r * .35 * k + .3, l, yw, [.35, .85, 1], pitch);       // cyan glow
+    const skip = Math.min(4, l / 2), sm = b.from.map((x, i) => x + u[i] * (skip + (l - skip) / 2));   // the outer ring starts clear of her
+    for (let i = 0; i < 10; i++) {                           // a ring of strands, as wide as it hits
+      const a = i / 10 * 6.283 + (b.t || 0) * 9, o = side.map((s, j) => (s * Math.cos(a) + up[j] * Math.sin(a)) * r * (.8 + .2 * k));
+      push(sm[0] + o[0], sm[1] + o[1], sm[2] + o[2], 3, .14, .14, l - skip, yw, [.5, 1, 1], pitch);
+    }
   }
 }
 function drawGadgets(pad_, trap, time) {
@@ -4947,9 +4957,9 @@ function resetWorld() {
 
 let dusk = 0;
 function render(dt, time, alpha = 1) {
-  // anyone's Horizon Cut darkens the world: mine, the computer's, or the other player's
-  const cutting = P.cm?.name === 'horizon' || pvp?.state?.s.cm?.name === 'horizon' ||
-    !E.dead && E.move === 'horizon' && (E.state === 'wind' || E.state === 'act');
+  // anyone's Horizon Cut or railgun darkens the world: mine, the computer's, or the other player's
+  const cutting = P.cm?.name === 'horizon' || pvp?.state?.s.cm?.name === 'horizon' || !!P.rail || !!pvp?.state?.s.rail ||
+    !E.dead && (E.move === 'horizon' || E.move === 'rail') && (E.state === 'wind' || E.state === 'act');
   dusk = preview ? 0 : dusk + ((cutting ? 1 : 0) - dusk) * Math.min(1, dt * (cutting ? 7 : 2));
   fxDt = dt;
   drawAlpha = alpha;
